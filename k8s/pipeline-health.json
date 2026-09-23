@@ -297,7 +297,7 @@
           "legendFormat": "p99 {{exchange}}"
         }
       ],
-      "description": "Trade time on the exchange clock to the time the worker processed it. The Docker VM clock can be about 1 s behind the exchanges. More than 30 s means RisingWave drops the trade (watermark)."
+      "description": "Trade time on the exchange clock to the time the worker processed it: exchange, network, Connect, Redpanda and the worker. It uses 2 clocks, so it includes their offset (about 0.1 s or less, measured). More than 30 s means RisingWave drops the trade (watermark)."
     },
     {
       "type": "timeseries",

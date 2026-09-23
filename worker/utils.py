@@ -118,8 +118,8 @@ def run(exchange: str, parse: Parser) -> None:
         "Parse and validate time of one raw message",
         explicit_bucket_boundaries_advisory=[0.02, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     )
-    # Exchange clock to worker clock. The Docker VM clock can be about 1 s behind the exchanges,
-    # so values can be negative.
+    # Exchange clock to worker clock, so it includes any clock offset. Measured on 2026-09-23: the pod clock
+    # was within about 0.1 s of Binance's server clock. A small negative value means the clocks differ.
     latency = meter.create_histogram(
         "trade.latency",
         "ms",
