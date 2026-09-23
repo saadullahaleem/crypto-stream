@@ -1,0 +1,73 @@
+# OpenTelemetry Collector: all metrics and traces go through here.
+#   traces:  OTLP (Connect, workers, Grafana)                      -> Jaeger
+#   metrics: OTLP (workers) + Prometheus scrape + kubelet stats   -> Prometheus (its OTLP receiver)
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+  # Components that only publish Prometheus metrics. A pod is scraped when it has the
+  # annotations prometheus.io/scrape: "true", prometheus.io/port and (optional) prometheus.io/path.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: pods
+          scrape_interval: 15s
+          kubernetes_sd_configs:
+            - role: pod
+              namespaces: { names: [crypto] }
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              regex: "true"
+              action: keep
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+              regex: (.+)
+              target_label: __metrics_path__
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $$1:$$2
+              target_label: __address__
+            - source_labels: [__meta_kubernetes_pod_label_app]
+              target_label: app
+            - source_labels: [__meta_kubernetes_pod_name]
+              target_label: pod
+        - job_name: keda
+          scrape_interval: 15s
+          static_configs:
+            - targets: [keda-operator.keda.svc.cluster.local:8080]
+
+  # CPU and memory of every pod and container, from the kubelet of the node.
+  kubeletstats:
+    collection_interval: 15s
+    auth_type: serviceAccount
+    endpoint: https://${env:K8S_NODE_IP}:10250
+    insecure_skip_verify: true
+    metric_groups: [pod, container]
+
+processors:
+  memory_limiter: { check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 25 }
+  batch: {}
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+  otlphttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    tls: { insecure: true }
+
+service:
+  telemetry:
+    metrics:  # the collector's own metrics, scraped by itself through its pod annotations
+      readers:
+        - pull: { exporter: { prometheus: { host: 0.0.0.0, port: 8888 } } }
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp, prometheus, kubeletstats]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/prometheus]

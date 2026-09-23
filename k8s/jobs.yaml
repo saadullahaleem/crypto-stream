@@ -1,0 +1,62 @@
+# One-time setup. Each Job is safe to run again: `kubectl apply -k k8s` after the TTL runs it again.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: topics }
+spec:
+  backoffLimit: 30
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rpk
+          image: redpandadata/redpanda:latest
+          imagePullPolicy: IfNotPresent
+          command: [sh, -ec]
+          args:
+            - |
+              export RPK_BROKERS=redpanda:9092 RPK_ADMIN_HOSTS=redpanda:9644
+              rpk cluster health --watch --exit-when-healthy
+              # Publish consumer lag as a metric (redpanda_kafka_consumer_group_lag_*).
+              rpk cluster config set enable_consumer_group_metrics '["group","partition","consumer_lag"]'
+              # Partitions set the most workers a feed can use: keep them equal to maxReplicaCount in exchanges/*.yaml.
+              for t in coinbase-raw-feed kraken-raw-feed binance-raw-feed okx-raw-feed; do
+                rpk topic describe $t >/dev/null 2>&1 || rpk topic create $t -p 12
+                rpk topic alter-config $t --set retention.ms=3600000
+              done
+              rpk topic describe processed-data >/dev/null 2>&1 || rpk topic create processed-data -p 12
+              rpk topic alter-config processed-data --set retention.ms=7200000
+              rpk topic list
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: schema }
+spec:
+  backoffLimit: 30
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: crypto-worker:dev
+          imagePullPolicy: Never
+          command: [python, utils.py, register]
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: rw-init }
+spec:
+  backoffLimit: 30
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: psql
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          command: [psql, -h, risingwave, -p, "4566", -U, root, -d, dev, -v, ON_ERROR_STOP=1, -f, /sql/init.sql]
+          volumeMounts: [{ name: sql, mountPath: /sql }]
+      volumes:
+        - { name: sql, configMap: { name: rw-init } }

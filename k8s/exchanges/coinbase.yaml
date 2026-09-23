@@ -1,0 +1,74 @@
+# To add an exchange: copy this file, replace "coinbase" everywhere, add the file to kustomization.yaml,
+# add the topic to jobs.yaml, and add worker/<exchange>.py with KEY, symbols(), inputs() and parse().
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: coinbase-ingest }
+spec:
+  replicas: 1  # one websocket client: a second replica would send every message two times
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: coinbase-ingest } }
+  template:
+    metadata:
+      labels: { app: coinbase-ingest }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "4195" }
+    spec:
+      initContainers:
+        - name: config  # gets the symbol list from the exchange and writes the Connect config
+          image: crypto-worker:dev
+          imagePullPolicy: Never
+          command: [sh, -c, "python connect_config.py coinbase > /config/connect.yaml"]
+          envFrom: [{ configMapRef: { name: ingest } }]
+          volumeMounts: [{ name: config, mountPath: /config }]
+      containers:
+        - name: connect
+          image: redpandadata/connect:latest
+          imagePullPolicy: IfNotPresent
+          args: [run, /config/connect.yaml]
+          readinessProbe:
+            httpGet: { path: /ready, port: 4195 }
+          volumeMounts: [{ name: config, mountPath: /config }]
+      volumes: [{ name: config, emptyDir: {} }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: coinbase-worker }
+spec:
+  selector: { matchLabels: { app: coinbase-worker } }
+  template:
+    metadata: { labels: { app: coinbase-worker } }
+    spec:
+      initContainers:
+        - name: schema-check  # waits until the Trade schema is in the registry
+          image: crypto-worker:dev
+          imagePullPolicy: Never
+          command: [python, utils.py, check]
+      containers:
+        - name: worker
+          image: crypto-worker:dev
+          imagePullPolicy: Never
+          command: [python, -u, coinbase.py]
+          envFrom: [{ configMapRef: { name: otel } }]
+          env:
+            - { name: OTEL_SERVICE_NAME, value: coinbase-worker }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            # One instance for each pod, so the metrics of 2 replicas do not overwrite each other.
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME)" }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: coinbase-worker }
+spec:
+  scaleTargetRef: { name: coinbase-worker }
+  minReplicaCount: 1
+  maxReplicaCount: 12  # = partitions of coinbase-raw-feed; more workers would have no partition
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: redpanda.crypto.svc.cluster.local:9092
+        consumerGroup: coinbase-worker
+        topic: coinbase-raw-feed
+        lagThreshold: "1000"  # target lag per worker; KEDA runs about total lag / 1000 workers

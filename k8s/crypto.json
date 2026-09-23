@@ -1,0 +1,298 @@
+{
+  "uid": "crypto",
+  "title": "Crypto Live",
+  "refresh": "1s",
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "5s",
+      "10s",
+      "30s"
+    ]
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "asset",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "risingwave"
+        },
+        "query": "SELECT asset FROM latest GROUP BY asset ORDER BY count(*) DESC, asset",
+        "refresh": 1,
+        "current": {
+          "text": "BTC",
+          "value": "BTC"
+        }
+      },
+      {
+        "name": "exchange",
+        "label": "candles from",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "risingwave"
+        },
+        "query": "SELECT DISTINCT exchange FROM latest ORDER BY 1",
+        "refresh": 1,
+        "current": {
+          "text": "coinbase",
+          "value": "coinbase"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "table",
+      "title": "Latest by exchange",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "price"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:$"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "spread"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "volume_24h"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT exchange, product_id, price, spread, volume_24h, ts AS last_trade FROM latest WHERE product_id LIKE '$asset-%' ORDER BY exchange"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Price by exchange (1s)",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "custom": {
+            "lineInterpolation": "stepAfter",
+            "spanNulls": true
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT window_start AS time, exchange || ' ' || product_id AS metric, price FROM prices_1s WHERE product_id LIKE '$asset-%' AND $__timeFilter(window_start) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "candlestick",
+      "title": "1-minute candles: $exchange",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$"
+        }
+      },
+      "options": {
+        "mode": "candles+volume"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT window_start AS time, open, high, low, close, volume FROM candles_1m WHERE exchange = '$exchange' AND product_id LIKE '$asset-%' AND $__timeFilter(window_start) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Spread by exchange (1s avg)",
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "lineInterpolation": "stepAfter",
+            "spanNulls": true
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT window_start AS time, exchange AS metric, spread FROM prices_1s WHERE product_id LIKE '$asset-%' AND $__timeFilter(window_start) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Trades per second",
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT window_start AS time, exchange AS metric, trades FROM prices_1s WHERE product_id LIKE '$asset-%' AND $__timeFilter(window_start) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Trades per second, all symbols",
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT window_start AS time, exchange AS metric, trades FROM exchange_rate_1s WHERE $__timeFilter(window_start) ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Last 20 trades",
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT ts, exchange, product_id, side, price, last_size FROM ticks WHERE product_id LIKE '$asset-%' ORDER BY ts DESC LIMIT 20"
+        }
+      ]
+    }
+  ]
+}

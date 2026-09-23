@@ -1,0 +1,38 @@
+# Deploy: kubectl apply -k k8s   (needs KEDA in the cluster, see README)
+namespace: crypto
+resources:
+  - infra.yaml
+  - jobs.yaml
+  - observability.yaml
+  - live.yaml
+  - exchanges/coinbase.yaml
+  - exchanges/kraken.yaml
+  - exchanges/binance.yaml
+  - exchanges/okx.yaml
+configMapGenerator:
+  - name: redpanda-bootstrap
+    literals: [".bootstrap.yaml=auto_create_topics_enabled: false"]
+  # Symbols to ingest: "*" for all, or base assets such as "BTC,ETH,SOL". CHUNK = symbols per websocket.
+  - name: ingest
+    literals:
+      - "BASES=*"
+      - "CHUNK=200"
+      - "TRACE_RATIO=0.01"
+  # Worker OpenTelemetry SDK settings (standard OTEL_* variables).
+  - name: otel
+    literals:
+      - "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318"
+      - "OTEL_TRACES_SAMPLER=parentbased_traceidratio"
+      - "OTEL_TRACES_SAMPLER_ARG=0.01"
+  - name: otel-collector
+    files: [otel-collector.yaml]
+  - name: prometheus
+    files: [prometheus.yaml]
+  - name: rw-init
+    files: [init.sql]
+  - name: grafana-datasources
+    files: [datasource.yaml=grafana-datasource.yaml]
+  - name: grafana-providers
+    files: [dashboards.yaml=grafana-dashboards.yaml]
+  - name: grafana-dashboards
+    files: [crypto.json, pipeline-health.json]

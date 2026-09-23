@@ -1,0 +1,8 @@
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.ruff_cache/
+.venv/

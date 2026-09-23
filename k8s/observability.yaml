@@ -1,0 +1,121 @@
+# OpenTelemetry Collector -> Jaeger (traces) and Prometheus (metrics). Grafana reads both.
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-collector }
+---
+# Pod discovery for the Prometheus receiver, and kubelet stats for pod CPU and memory.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-collector }
+rules:
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes/stats, nodes/proxy]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-collector }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: otel-collector }
+subjects:
+  - { kind: ServiceAccount, name: otel-collector, namespace: crypto }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: otel-collector }
+spec:
+  selector: { app: otel-collector }
+  ports:
+    - { name: otlp-grpc, port: 4317 }
+    - { name: otlp-http, port: 4318 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: otel-collector }
+spec:
+  selector: { matchLabels: { app: otel-collector } }
+  template:
+    metadata:
+      labels: { app: otel-collector }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8888" }
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:latest
+          imagePullPolicy: IfNotPresent
+          args: [--config=/conf/otel-collector.yaml]
+          env:
+            - name: K8S_NODE_IP
+              valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts: [{ name: conf, mountPath: /conf }]
+      volumes:
+        - { name: conf, configMap: { name: otel-collector } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: jaeger }
+spec:
+  type: LoadBalancer
+  selector: { app: jaeger }
+  ports:
+    - { name: ui, port: 16686 }
+    - { name: otlp-grpc, port: 4317 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: jaeger }
+spec:
+  selector: { matchLabels: { app: jaeger } }
+  template:
+    metadata: { labels: { app: jaeger } }
+    spec:
+      containers:
+        # ponytail: all-in-one with in-memory storage: traces are lost on restart. Use Badger or Elasticsearch storage to keep them.
+        - name: jaeger
+          # 2.21 removed the /api/* JSON API that the Grafana Jaeger data source (13.2) uses. Keep 2.20 until Grafana uses /api/v3.
+          image: jaegertracing/jaeger:2.20.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: prometheus }
+spec:
+  type: LoadBalancer
+  selector: { app: prometheus }
+  ports: [{ port: 9090 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: prometheus }
+spec:
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: prometheus } }
+  template:
+    metadata: { labels: { app: prometheus } }
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/conf/prometheus.yaml
+            - --web.enable-otlp-receiver
+            - --storage.tsdb.retention.time=2d
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 2Gi }
+          volumeMounts:
+            - { name: conf, mountPath: /conf }
+            - { name: data, mountPath: /prometheus }
+      volumes:
+        - { name: conf, configMap: { name: prometheus } }
+        - { name: data, emptyDir: {} }  # ponytail: 2 days of metrics, lost on restart; use a PVC to keep them

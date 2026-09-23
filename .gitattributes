@@ -1,0 +1,2 @@
+# LF everywhere: shell scripts inside the YAML and the Dockerfiles break with CRLF.
+* text=auto eol=lf

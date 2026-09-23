@@ -1,0 +1,661 @@
+{
+  "uid": "pipeline-health",
+  "title": "Pipeline Health",
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "trace_service",
+        "label": "trace service",
+        "type": "custom",
+        "query": "okx-worker,binance-worker,coinbase-worker,kraken-worker,okx-ingest,binance-ingest,coinbase-ingest,kraken-ingest,grafana",
+        "current": {
+          "text": "okx-worker",
+          "value": "okx-worker"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Pipeline throughput",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Raw messages in (Connect \u2192 raw feeds)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "msg/s",
+          "custom": {
+            "fillOpacity": 40,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (app) (rate(output_sent_total{app=~\".+-ingest\"}[1m]))",
+          "legendFormat": "{{app}}"
+        }
+      ],
+      "description": "Messages that each ingest pod wrote to its <exchange>-raw-feed topic."
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker messages read",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "msg/s",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (exchange, result) (rate(worker_messages_total[1m]))",
+          "legendFormat": "{{exchange}} {{result}}"
+        }
+      ],
+      "description": "skipped = failed validation. It must stay at 0."
+    },
+    {
+      "type": "timeseries",
+      "title": "Trades out (\u2192 processed-data)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 40,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (exchange) (rate(worker_trades_total[1m]))",
+          "legendFormat": "{{exchange}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Lag, scaling and latency",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer lag by worker group",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (redpanda_group) (redpanda_kafka_consumer_group_lag_sum{redpanda_group=~\".+-worker\"})",
+          "legendFormat": "{{redpanda_group}}"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (scaledObject) (keda_scaler_metrics_value)",
+          "legendFormat": "KEDA sees: {{scaledObject}}"
+        }
+      ],
+      "description": "Messages in the raw feed that the workers did not commit yet. Commits happen each 1 s, so a lag up to about 1 s of messages is normal. RisingWave's own groups (rw-consumer-*) are left out: RisingWave keeps its offsets inside itself, so their lag means nothing."
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker pods (KEDA)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count by (job) (last_over_time(worker_messages_total{result=\"ok\"}[1m]))",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "description": "Worker pods that sent metrics in the last minute. KEDA adds a pod for each 1000 messages of lag, up to 12."
+    },
+    {
+      "type": "timeseries",
+      "title": "Trade latency: exchange \u2192 worker",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, exchange) (rate(trade_latency_milliseconds_bucket[1m])))",
+          "legendFormat": "p50 {{exchange}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le, exchange) (rate(trade_latency_milliseconds_bucket[1m])))",
+          "legendFormat": "p99 {{exchange}}"
+        }
+      ],
+      "description": "Trade time on the exchange clock to the time the worker processed it. The Docker VM clock can be about 1 s behind the exchanges. More than 30 s means RisingWave drops the trade (watermark)."
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker parse time for each message",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, exchange) (rate(worker_process_duration_milliseconds_bucket[1m])))",
+          "legendFormat": "p50 {{exchange}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le, exchange) (rate(worker_process_duration_milliseconds_bucket[1m])))",
+          "legendFormat": "p99 {{exchange}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redpanda produce throughput by topic",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 18,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "fillOpacity": 40,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (redpanda_topic) (rate(redpanda_kafka_request_bytes_total{redpanda_request=\"produce\", redpanda_topic!~\"_.*\"}[1m]))",
+          "legendFormat": "{{redpanda_topic}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RisingWave",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 18,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(stream_source_output_rows_counts_total{source_name=\"trades\"}[1m]))",
+          "legendFormat": "rows/s read from processed-data"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(meta_barrier_duration_seconds_bucket[1m]))) * 1000",
+          "legendFormat": "barrier p99 (ms)"
+        }
+      ],
+      "description": "Barrier latency is the time for one checkpoint through all views. If it grows, RisingWave falls behind."
+    },
+    {
+      "type": "row",
+      "title": "Resources",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU by pod",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (k8s_pod_name) (k8s_pod_cpu_usage{k8s_namespace_name=\"crypto\"})",
+          "legendFormat": "{{k8s_pod_name}}"
+        }
+      ],
+      "description": "CPU cores in use."
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory by pod (working set)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (k8s_pod_name) (k8s_pod_memory_working_set_bytes{k8s_namespace_name=\"crypto\"})",
+          "legendFormat": "{{k8s_pod_name}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Telemetry pipeline",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "OpenTelemetry Collector",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(otelcol_exporter_sent_spans_total[1m]))",
+          "legendFormat": "spans/s sent to Jaeger"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(otelcol_exporter_sent_metric_points_total[1m]))",
+          "legendFormat": "metric points/s sent to Prometheus"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(otelcol_exporter_send_failed_spans_total[1m])) + sum(rate(otelcol_exporter_send_failed_metric_points_total[1m]))",
+          "legendFormat": "failed/s"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scrape targets up",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (job, app) (up)",
+          "legendFormat": "{{job}} {{app}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Traces (1% of messages)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent traces: $trace_service",
+      "datasource": {
+        "type": "jaeger",
+        "uid": "jaeger"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 10
+      },
+      "description": "Click a trace ID to open the trace: Connect websocket input \u2192 Kafka produce \u2192 worker.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "jaeger",
+            "uid": "jaeger"
+          },
+          "queryType": "search",
+          "service": "$trace_service",
+          "limit": 20
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[project]
+name = "crypto-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "confluent-kafka>=2,<3",
+    "pydantic>=2,<3",
+    "opentelemetry-sdk>=1,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1,<2",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, pyupgrade, bugbear
+select = ["E", "W", "F", "I", "UP", "B"]

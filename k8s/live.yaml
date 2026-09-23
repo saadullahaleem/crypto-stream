@@ -1,0 +1,30 @@
+# Live page (live/): pushes the changes of RisingWave views to the browser, in the style of the RisingWave demos.
+apiVersion: v1
+kind: Service
+metadata: { name: live }
+spec:
+  type: LoadBalancer
+  selector: { app: live }
+  ports: [{ port: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: live }
+spec:
+  selector: { matchLabels: { app: live } }
+  template:
+    metadata: { labels: { app: live } }
+    spec:
+      containers:
+        - name: live
+          image: crypto-live:dev
+          imagePullPolicy: Never
+          readinessProbe:
+            httpGet: { path: /sql, port: 8000 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          # The page shows the SQL of each view exactly as written in init.sql.
+          volumeMounts: [{ name: sql, mountPath: /sql }]
+      volumes:
+        - { name: sql, configMap: { name: rw-init } }

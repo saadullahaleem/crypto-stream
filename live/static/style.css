@@ -1,0 +1,234 @@
+:root {
+  --bg: #081418;
+  --panel: #0c1c21;
+  --line: #16323a;
+  --line-soft: rgba(22, 50, 58, 0.5);
+  --text: #d7e3e6;
+  --dim: #6f8a91;
+  --accent: #22d3a6;
+  --buy: #34d399;
+  --sell: #f87171;
+
+  --arrive: rgba(34, 211, 166, 0.22);
+  --up: rgba(52, 211, 153, 0.28);
+  --down: rgba(248, 113, 113, 0.28);
+
+  --sql-text: #b7c9cd;
+  --sql-keyword: #60a5fa;
+  --sql-function: #f472b6;
+  --sql-string: #fbbf24;
+
+  --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.lead {
+  margin: 0 0 20px;
+  color: var(--dim);
+}
+
+/* Cards and their header bar */
+
+.card {
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font: 12px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bar__title {
+  color: var(--text);
+}
+
+.bar__spacer {
+  flex: 1;
+}
+
+.status::before {
+  content: "●";
+  margin-right: 6px;
+}
+
+.status--live::before {
+  color: var(--accent);
+  animation: blink 2s infinite;
+}
+
+.status--off::before {
+  color: var(--sell);
+}
+
+select,
+button {
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 12px var(--mono);
+  cursor: pointer;
+}
+
+button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Tables */
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12.5px var(--mono);
+}
+
+th {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+td {
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+th.num,
+td.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.buy {
+  color: var(--buy);
+}
+
+.sell {
+  color: var(--sell);
+}
+
+.dim {
+  color: var(--dim);
+}
+
+/* Row animations: a new tape row, and a changed view row */
+
+.row--new {
+  animation: arrive 1.6s ease-out;
+}
+
+.row--up {
+  animation: up 1.2s ease-out;
+}
+
+.row--down {
+  animation: down 1.2s ease-out;
+}
+
+@keyframes arrive {
+  from { background: var(--arrive); }
+  to { background: transparent; }
+}
+
+@keyframes up {
+  from { background: var(--up); }
+  to { background: transparent; }
+}
+
+@keyframes down {
+  from { background: var(--down); }
+  to { background: transparent; }
+}
+
+@keyframes blink {
+  50% { opacity: 0.3; }
+}
+
+/* A view: its SQL next to its rows */
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.pair > * + * {
+  border-left: 1px solid var(--line);
+}
+
+.sql {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--sql-text);
+  font: 12px/1.55 var(--mono);
+  white-space: pre-wrap;
+}
+
+.sql .keyword {
+  color: var(--sql-keyword);
+}
+
+.sql .function {
+  color: var(--sql-function);
+}
+
+.sql .string {
+  color: var(--sql-string);
+}
+
+@media (max-width: 900px) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+
+  .pair > * + * {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}

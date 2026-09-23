@@ -1,0 +1,163 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: crypto }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: redpanda }
+spec:
+  selector: { app: redpanda }
+  ports:
+    - { name: kafka, port: 9092 }
+    - { name: registry, port: 8081 }
+    - { name: admin, port: 9644 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: redpanda }
+spec:
+  serviceName: redpanda
+  replicas: 1
+  selector: { matchLabels: { app: redpanda } }
+  template:
+    metadata:
+      labels: { app: redpanda }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9644", prometheus.io/path: /public_metrics }
+    spec:
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=2
+            - --memory=2G
+            - --kafka-addr=0.0.0.0:9092
+            # Fully qualified: KEDA runs in another namespace and also connects to the advertised address.
+            - --advertise-kafka-addr=redpanda.crypto.svc.cluster.local:9092
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { memory: 3Gi }
+          readinessProbe:
+            exec: { command: [sh, -c, "rpk cluster health | grep -q 'Healthy:.*true'"] }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/redpanda/data }
+            # Read once, when the cluster forms: topics come only from the topics Job, with the right partitions.
+            - { name: bootstrap, mountPath: /etc/redpanda/.bootstrap.yaml, subPath: .bootstrap.yaml }
+      volumes:
+        - { name: bootstrap, configMap: { name: redpanda-bootstrap } }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: console }
+spec:
+  type: LoadBalancer  # Docker Desktop serves LoadBalancer ports on localhost
+  selector: { app: console }
+  ports: [{ port: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: console }
+spec:
+  selector: { matchLabels: { app: console } }
+  template:
+    metadata:
+      labels: { app: console }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8080", prometheus.io/path: /admin/metrics }
+    spec:
+      containers:
+        - name: console
+          image: redpandadata/console:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: KAFKA_BROKERS, value: "redpanda:9092" }
+            - { name: SCHEMAREGISTRY_ENABLED, value: "true" }
+            - { name: SCHEMAREGISTRY_URLS, value: "http://redpanda:8081" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: risingwave }
+spec:
+  type: LoadBalancer
+  selector: { app: risingwave }
+  ports: [{ port: 4566 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: risingwave }
+spec:
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: risingwave } }
+  template:
+    metadata:
+      labels: { app: risingwave }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "1250" }
+    spec:
+      containers:
+        # ponytail: single_node keeps its state in the container, so a restart rebuilds the views from
+        # processed-data (2h retention). Use the RisingWave Helm chart with object storage to keep state.
+        - name: risingwave
+          image: risingwavelabs/risingwave:latest
+          imagePullPolicy: IfNotPresent
+          args: [single_node]
+          env:
+            - { name: RW_TELEMETRY_ENABLED, value: "false" }
+            # The default listens on 127.0.0.1 only, so the collector cannot scrape it.
+            - { name: RW_SINGLE_NODE_PROMETHEUS_LISTENER_ADDR, value: "0.0.0.0:1250" }
+          resources:
+            # Below about 8Gi the embedded compactor gets too little memory and RisingWave stops at start.
+            requests: { cpu: "1", memory: 4Gi }
+            limits: { memory: 8Gi }
+          readinessProbe:
+            tcpSocket: { port: 4566 }
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata: { name: grafana }
+spec:
+  type: LoadBalancer
+  selector: { app: grafana }
+  ports: [{ port: 3000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: grafana }
+spec:
+  selector: { matchLabels: { app: grafana } }
+  template:
+    metadata:
+      labels: { app: grafana }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "3000" }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Admin }
+            - { name: GF_AUTH_DISABLE_LOGIN_FORM, value: "true" }
+            - { name: GF_DASHBOARDS_MIN_REFRESH_INTERVAL, value: 1s }
+            - { name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: /var/lib/grafana/dashboards/crypto.json }
+            # Grafana's own traces. 5%: each dashboard refresh is 7 queries each second.
+            - { name: GF_TRACING_OPENTELEMETRY_OTLP_ADDRESS, value: "otel-collector:4317" }
+            - { name: GF_TRACING_OPENTELEMETRY_OTLP_PROPAGATION, value: w3c }
+            - { name: GF_TRACING_OPENTELEMETRY_SAMPLER_TYPE, value: probabilistic }
+            - { name: GF_TRACING_OPENTELEMETRY_SAMPLER_PARAM, value: "0.05" }
+          volumeMounts:
+            - { name: datasources, mountPath: /etc/grafana/provisioning/datasources }
+            - { name: providers, mountPath: /etc/grafana/provisioning/dashboards }
+            - { name: dashboards, mountPath: /var/lib/grafana/dashboards }
+      volumes:
+        - { name: datasources, configMap: { name: grafana-datasources } }
+        - { name: providers, configMap: { name: grafana-providers } }
+        - { name: dashboards, configMap: { name: grafana-dashboards } }

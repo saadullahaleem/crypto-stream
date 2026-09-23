@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Crypto Live</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script type="module" src="/static/js/main.js"></script>
+  </head>
+
+  <body>
+    <main>
+      <h1>Crypto Live</h1>
+      <p class="lead">
+        Trades from Coinbase, Kraken, Binance and OKX, pushed by RisingWave subscriptions the moment each view
+        changes. New orders enter at the top. Changed rows flash green (up) or red (down). One row is one taker
+        order: the fills it made at the same moment are added together.
+      </p>
+
+      <!-- Trade tape -->
+      <section class="card">
+        <div class="bar">
+          <span id="status" class="status status--off">connecting</span>
+          <span class="bar__title">ticks</span>
+          <span class="bar__spacer"></span>
+          <label>asset <select id="asset"></select></label>
+          <label>
+            min value
+            <select id="min-value">
+              <option value="0">all</option>
+              <option value="1000" selected>$1k</option>
+              <option value="10000">$10k</option>
+              <option value="100000">$100k</option>
+            </select>
+          </label>
+          <button id="pause" type="button" aria-pressed="false" title="Stop the tape to read it. New orders are kept.">
+            pause
+          </button>
+          <span id="rate">0 trades/s</span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>time</th>
+                <th>exchange</th>
+                <th>product</th>
+                <th>side</th>
+                <th class="num">price</th>
+                <th class="num">size</th>
+                <th class="num">fills</th>
+                <th class="num">value</th>
+                <th class="num">spread</th>
+              </tr>
+            </thead>
+            <tbody id="tape"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- latest: SQL and rows -->
+      <section class="card">
+        <div class="bar">
+          <span class="bar__title">streaming sql</span>
+          <span class="bar__spacer"></span>
+          <span>latest</span>
+        </div>
+        <div class="pair">
+          <pre id="sql-latest" class="sql"></pre>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>exchange</th>
+                  <th>product</th>
+                  <th class="num">price</th>
+                  <th class="num">spread</th>
+                  <th class="num">24h volume</th>
+                  <th>last trade</th>
+                </tr>
+              </thead>
+              <tbody id="latest"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- price_gap: SQL and rows -->
+      <section class="card">
+        <div class="bar">
+          <span class="bar__title">streaming sql</span>
+          <span class="bar__spacer"></span>
+          <span>price_gap · top 15</span>
+        </div>
+        <div class="pair">
+          <pre id="sql-price_gap" class="sql"></pre>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>asset</th>
+                  <th class="num">exch.</th>
+                  <th>low</th>
+                  <th>high</th>
+                  <th class="num">gap (bps)</th>
+                </tr>
+              </thead>
+              <tbody id="gaps"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
