@@ -41,4 +41,4 @@ configMapGenerator:
   - name: grafana-providers
     files: [dashboards.yaml=grafana-dashboards.yaml]
   - name: grafana-dashboards
-    files: [crypto.json, pipeline-health.json]
+    files: [crypto.json, pipeline-health.json, k8s-cluster.json]

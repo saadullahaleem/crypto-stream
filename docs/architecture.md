@@ -89,6 +89,7 @@ The 3 Jobs can run again safely. They check what exists before they change anyth
 | http://localhost:8080 | Redpanda Console |
 | `localhost:4566`, user `root`, database `dev` | RisingWave, Postgres protocol |
 | http://localhost:3000/d/pipeline-health | Grafana, Pipeline Health dashboard |
+| http://localhost:3000/d/k8s | Grafana, Kubernetes dashboard |
 | http://localhost:16686 | Jaeger UI |
 | http://localhost:9090 | Prometheus UI |
 

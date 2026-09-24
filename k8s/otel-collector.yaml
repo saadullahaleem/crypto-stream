@@ -1,6 +1,6 @@
 # OpenTelemetry Collector: all metrics and traces go through here.
 #   traces:  OTLP (Connect, workers, Grafana)                      -> Jaeger
-#   metrics: OTLP (workers) + Prometheus scrape + kubelet stats   -> Prometheus (its OTLP receiver)
+#   metrics: OTLP (workers) + Prometheus scrape + kubelet stats + cluster state -> Prometheus (its OTLP receiver)
 receivers:
   otlp:
     protocols:
@@ -37,17 +37,41 @@ receivers:
           static_configs:
             - targets: [keda-operator.keda.svc.cluster.local:8080]
 
-  # CPU and memory of every pod and container, from the kubelet of the node.
+  # CPU, memory, network and disk of the node, every pod and container, and every volume, from the node's kubelet.
   kubeletstats:
     collection_interval: 15s
     auth_type: serviceAccount
     endpoint: https://${env:K8S_NODE_IP}:10250
     insecure_skip_verify: true
-    metric_groups: [pod, container]
+    metric_groups: [node, pod, container, volume]
+    # Volume use is reported for emptyDir and ConfigMap volumes only: our PVCs are hostPath volumes (kind's
+    # local-path provisioner), which the kubelet does not measure. The node's filesystem metrics cover them.
+
+  # The cluster's state from the Kubernetes API: pod phases, container restarts, requests and limits, and
+  # deployments, StatefulSets, HPAs (KEDA), jobs and node conditions.
+  k8s_cluster:
+    auth_type: serviceAccount
+    collection_interval: 15s
+    node_conditions_to_report: [Ready, MemoryPressure, DiskPressure]
+    allocatable_types_to_report: [cpu, memory]
 
 processors:
   memory_limiter: { check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 25 }
   batch: {}
+  # Prometheus turns only the resource attributes in k8s/prometheus.yaml into labels. Copy the other Kubernetes
+  # names onto each data point, so dashboards can group by them without a Prometheus restart.
+  transform/k8s-labels:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["k8s.node.name"], resource.attributes["k8s.node.name"]) where resource.attributes["k8s.node.name"] != nil
+          - set(attributes["k8s.deployment.name"], resource.attributes["k8s.deployment.name"]) where resource.attributes["k8s.deployment.name"] != nil
+          - set(attributes["k8s.statefulset.name"], resource.attributes["k8s.statefulset.name"]) where resource.attributes["k8s.statefulset.name"] != nil
+          - set(attributes["k8s.hpa.name"], resource.attributes["k8s.hpa.name"]) where resource.attributes["k8s.hpa.name"] != nil
+          - set(attributes["k8s.job.name"], resource.attributes["k8s.job.name"]) where resource.attributes["k8s.job.name"] != nil
+          # A pod has several volumes: without the volume name, their series would overwrite each other.
+          - set(attributes["k8s.volume.name"], resource.attributes["k8s.volume.name"]) where resource.attributes["k8s.volume.name"] != nil
 
 exporters:
   otlp/jaeger:
@@ -68,6 +92,6 @@ service:
       processors: [memory_limiter, batch]
       exporters: [otlp/jaeger]
     metrics:
-      receivers: [otlp, prometheus, kubeletstats]
-      processors: [memory_limiter, batch]
+      receivers: [otlp, prometheus, kubeletstats, k8s_cluster]
+      processors: [memory_limiter, transform/k8s-labels, batch]
       exporters: [otlphttp/prometheus]
