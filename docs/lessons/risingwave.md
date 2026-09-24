@@ -76,7 +76,17 @@ candle rows kept growing (34,500 → 34,580).
 **My mistake:** a comment and the architecture document said that a restart builds the views again from
 `processed-data`. I wrote that without a test. A restart test on the first day would have shown the problem.
 
-## 8. Smaller points
+## 8. New rows become visible only at each checkpoint
+
+**What we measured:** a trade reached a subscriber about 920 ms after it happened (p50, NTP-corrected), and
+RisingWave's checkpoint came every 1,000 ms (`barrier_interval_ms`). Views and subscriptions show new rows only
+after the next checkpoint, so that interval was the largest wait in the whole pipeline.
+
+**Change:** `ALTER SYSTEM SET barrier_interval_ms = 250` (in [k8s/init.sql](../../k8s/init.sql)). Result: about
+460 ms (p50). Cost: RisingWave CPU 1.24 → 2.95 cores. A checkpoint still takes 67 ms (p50) and 219 ms (p99), so
+checkpoints do not queue up. Below about 250 ms, they would start to.
+
+## 9. Smaller points
 
 - `CREATE SOURCE` fails if the Kafka topic does not exist yet. The `rw-init` Job retries until the topics Job is done.
 - Subscriptions push the changes of a view: `CREATE SUBSCRIPTION`, then `DECLARE ... SUBSCRIPTION CURSOR` and
