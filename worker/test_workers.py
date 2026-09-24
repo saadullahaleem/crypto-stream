@@ -1,13 +1,15 @@
 """Run: python test_workers.py"""
 
 import json
+import struct
 import time
 
 import binance
+import clock
 import coinbase
 import kraken
 import okx
-from utils import Quote, Trade, process
+from utils import Quote, Trade, exchange_offset, process
 
 
 def feed(module, msg: dict, book: dict[str, Quote]) -> list[Trade]:
@@ -76,6 +78,34 @@ try:
     raise AssertionError("bad price passed")
 except ValueError:
     pass
+
+# Clock: an NTP time field is seconds since 1900, as 32 bits of whole seconds and 32 bits of fraction.
+field = struct.pack("!II", clock.NTP_EPOCH + 1_000_000, 2**31)
+assert clock._ntp_seconds(field) == 1_000_000.5
+
+# Clock: for each server take the sample with the shortest round trip, then the median over servers.
+fake = {
+    "a": iter([(0.30, 0.100), (0.25, 0.020)]),
+    "b": iter([(0.24, 0.030)]),  # answers once; the second query gets no answer
+    "c": iter([(0.26, 0.040), (9.0, 0.500)]),
+}
+
+
+def fake_sntp(server: str) -> tuple[float, float]:
+    sample = next(fake[server], None)
+    if sample is None:
+        raise OSError("no answer")  # like a lost UDP reply
+    return sample
+
+
+clock.sntp = fake_sntp
+clock.SAMPLES = 2
+offset, error = clock.measure(("a", "b", "c"))
+assert (round(offset, 3), round(error, 3)) == (0.25, 0.015), (offset, error)
+
+# Exchange clock: 5 s ahead of ours, measured with no delay.
+off, err = exchange_offset(lambda: time.time() + 5.0)
+assert abs(off - 5.0) < 0.01 and err < 0.01, (off, err)
 
 # Throughput of one worker, to size replicas against the feed rates.
 msg = json.dumps({"data": {"e": "trade", "s": "BTCUSDT", "p": "84000.1", "q": "0.01", "T": 1790188652202, "m": False}})

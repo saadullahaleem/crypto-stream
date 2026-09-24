@@ -10,6 +10,7 @@ Claims I made on the first day that a measurement later proved wrong, and what t
 | 4 | "`max_in_flight` reorders the messages." | Trade-ID order, with each setting changed alone | Half right. Pipeline threads also reorder, and each cause alone is enough. |
 | 5 | "Connect needs only 10 ms for each message." | Trade-ID order at that setting | That speed came from writes out of order. With the order kept, it is about 24 ms. |
 | 6 | "A RisingWave restart builds the views again from `processed-data`." | A restart of the computer | Wrong. The restart deleted all RisingWave objects. Fixed with a volume. |
+| 7 | "Every latency number so far is about 245 ms too low." | The NTP offset on 2 days | Wrong. The offset changes: small on 2026-09-23, about 250 ms on 2026-09-24 after Windows stopped syncing. A fixed correction would be wrong; the workers now measure it every minute. |
 
 ## What worked
 
@@ -34,4 +35,6 @@ Claims I made on the first day that a measurement later proved wrong, and what t
 | Worker parse time | p50 25 to 78 µs, p99 230 to 450 µs |
 | Redpanda produce ack | 0.8 ms p50, 3.9 ms p99 |
 | Connect, each message | about 24 ms (with order kept) |
-| Exchange → worker, p50 | Coinbase 27 ms, Kraken 74 ms, OKX 78 ms, Binance 90 ms |
+| Coinbase → Connect, p50 (NTP-corrected) | about 28 ms |
+| RisingWave checkpoint 1,000 ms → 250 ms | trade age at a subscriber p50 about 920 → 460 ms (NTP-corrected); CPU 1.24 → 2.95 cores |
+| Exchange → worker, p50 (NTP-corrected, 2026-09-24) | Coinbase 39 ms, Kraken 79 ms, OKX 172 ms, Binance 175 ms |

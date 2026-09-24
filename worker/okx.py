@@ -14,6 +14,11 @@ def symbols() -> dict[str, str]:
     }
 
 
+def server_time() -> float:
+    """OKX's clock, in seconds."""
+    return int(get_json("https://www.okx.com/api/v5/public/time")["data"][0]["ts"]) / 1000
+
+
 def inputs(chunk: list[str]) -> list[dict]:
     args = [{"channel": ch, "instId": s} for s in chunk for ch in ("trades", "tickers")]
     return [
@@ -34,4 +39,4 @@ def parse(m: dict) -> Iterator[Quote | Fill]:
 
 
 if __name__ == "__main__":
-    run("okx", parse)
+    run("okx", parse, server_time)

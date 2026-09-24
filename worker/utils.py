@@ -3,6 +3,7 @@
 import json
 import signal
 import sys
+import threading
 import time
 import urllib.request
 from collections.abc import Callable, Iterable
@@ -13,6 +14,7 @@ from confluent_kafka import Consumer, Producer
 from opentelemetry import metrics, propagate, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -20,6 +22,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from pydantic import BaseModel
+
+from clock import Clock
 
 BROKERS = "redpanda:9092"
 REGISTRY = "http://redpanda:8081"
@@ -106,8 +110,58 @@ def telemetry() -> tuple[TracerProvider, MeterProvider]:
     return tracer_provider, meter_provider
 
 
-def run(exchange: str, parse: Parser) -> None:
+def exchange_offset(server_time: Callable[[], float], samples: int = 4) -> tuple[float, float]:
+    """(offset, error) in seconds of the exchange's clock against this machine's clock.
+
+    The best of a few HTTP requests: the one with the shortest round trip, whose error is half that round trip.
+    """
+    best = None
+    for _ in range(samples):
+        sent = time.time()
+        server = server_time()
+        received = time.time()
+        sample = (server - (sent + received) / 2, (received - sent) / 2)
+        if best is None or sample[1] < best[1]:
+            best = sample
+    return best
+
+
+def watch_clocks(meter, exchange: str, clock: Clock, server_time: Callable[[], float] | None) -> None:
+    """Publish how far this machine's clock is from NTP time and from the exchange's clock, in ms."""
+    offsets = {}  # reference -> (offset, error) in seconds
+
+    def refresh() -> None:
+        while True:
+            if server_time is not None:
+                try:
+                    offsets[exchange] = exchange_offset(server_time)
+                except (OSError, ValueError, KeyError) as e:
+                    print(f"clock: {exchange} server time failed: {e!r}", flush=True)
+            time.sleep(60)
+
+    threading.Thread(target=refresh, daemon=True).start()
+
+    def observe(index: int):
+        def callback(_: CallbackOptions):
+            current = dict(offsets)
+            if clock.error is not None:
+                current["ntp"] = (clock.offset, clock.error)
+            return [Observation(v[index] * 1000, {"reference": ref}) for ref, v in current.items()]
+
+        return callback
+
+    meter.create_observable_gauge(
+        "clock.offset",
+        [observe(0)],
+        "ms",
+        "Reference clock minus this machine's clock. Positive: this machine is behind.",
+    )
+    meter.create_observable_gauge("clock.error", [observe(1)], "ms", "Largest possible error of clock.offset")
+
+
+def run(exchange: str, parse: Parser, server_time: Callable[[], float] | None = None) -> None:
     providers = telemetry()
+    clock = Clock()
     tracer = trace.get_tracer("worker")
     meter = metrics.get_meter("worker")
     messages = meter.create_counter("worker.messages", "{message}", "Raw messages read, by result")
@@ -118,8 +172,7 @@ def run(exchange: str, parse: Parser) -> None:
         "Parse and validate time of one raw message",
         explicit_bucket_boundaries_advisory=[0.02, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     )
-    # Exchange clock to worker clock, so it includes any clock offset. Measured on 2026-09-23: the pod clock
-    # was within about 0.1 s of Binance's server clock. A small negative value means the clocks differ.
+    # Exchange clock to our clock, corrected to NTP time (clock.py). Without the correction it was 245 ms too low.
     latency = meter.create_histogram(
         "trade.latency",
         "ms",
@@ -127,6 +180,7 @@ def run(exchange: str, parse: Parser) -> None:
         explicit_bucket_boundaries_advisory=[0, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000],
     )
     attrs = {"exchange": exchange}
+    watch_clocks(meter, exchange, clock, server_time)
 
     consumer = Consumer(
         {
@@ -182,7 +236,7 @@ def run(exchange: str, parse: Parser) -> None:
                 span.set_attribute("trades", len(trades))
                 headers = {}
                 propagate.inject(headers)  # processed-data carries the trace on
-                now = time.time()
+                now = clock.now()
                 for t in trades:
                     latency.record((now - t.ts.timestamp()) * 1000, attrs)
                     producer.produce(

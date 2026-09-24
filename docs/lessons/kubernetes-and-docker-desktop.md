@@ -31,7 +31,23 @@ uses it first.
 - `docker ps` is empty. Docker Desktop hides the node container, and the pods run inside it, on containerd.
   To see them: `docker exec desktop-control-plane crictl ps`.
 
-## 4. Smaller points
+## 4. The pods' clock follows Windows, and Windows drifts
+
+**What happened:** Coinbase stamped its trades about 226 ms *after* Connect received them, measured on our clock.
+
+**Cause:** the pods take their time from the Docker VM, which takes it from Windows. The Windows time service showed
+`not synchronized`: its last sync was hours earlier, from `time.windows.com`. Our clock was about 250 ms behind NTP
+time. It was much less the day before, so the offset changes over time.
+
+**Fix in the application:** [worker/clock.py](../../worker/clock.py) asks 3 NTP servers every minute, and the workers
+add the offset to their own time. They also publish `clock_offset_milliseconds` against NTP and against each
+exchange's server-time API (Kraken's API gives whole seconds only, so it is left out). The Pipeline Health
+dashboard shows it in the "Clocks" row.
+
+**Fix at the source (not done: it is a Windows system setting):** in an administrator PowerShell, `w32tm /resync`,
+or configure Windows to sync more often with better NTP servers.
+
+## 5. Smaller points
 
 - Docker Desktop serves `LoadBalancer` services on `localhost`, so Grafana is at `localhost:3000` without port-forward.
 - A change to pod annotations changes the pod template, so the pods restart. Adding scrape annotations restarted

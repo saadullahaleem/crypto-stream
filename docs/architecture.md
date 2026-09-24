@@ -380,7 +380,7 @@ Redpanda, RisingWave, Console, KEDA and Prometheus do not send traces.
 
 | Source | How | Examples |
 |---|---|---|
-| Workers | OTLP push, each 10 s | `worker_messages_total{exchange,result}`, `worker_trades_total`, `worker_process_duration_milliseconds`, `trade_latency_milliseconds` |
+| Workers | OTLP push, each 10 s | `worker_messages_total{exchange,result}`, `worker_trades_total`, `worker_process_duration_milliseconds`, `trade_latency_milliseconds` (corrected to NTP time), `clock_offset_milliseconds{reference}` |
 | Connect | Scrape `:4195/metrics` | `output_sent_total`, `input_received_total` |
 | Redpanda | Scrape `:9644/public_metrics` | `redpanda_kafka_consumer_group_lag_sum{redpanda_group}`, `redpanda_kafka_request_bytes_total` |
 | RisingWave | Scrape `:1250/metrics` | `stream_source_output_rows_counts_total`, `meta_barrier_duration_seconds` |

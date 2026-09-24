@@ -15,6 +15,11 @@ def symbols() -> dict[str, str]:
     }
 
 
+def server_time() -> float:
+    """Coinbase's clock, in seconds."""
+    return float(get_json("https://api.exchange.coinbase.com/time")["epoch"])
+
+
 def inputs(chunk: list[str]) -> list[dict]:
     msg = {"type": "subscribe", "product_ids": chunk, "channels": ["ticker"]}
     return [{"url": "wss://ws-feed.exchange.coinbase.com", "open_message": json.dumps(msg)}]
@@ -29,4 +34,4 @@ def parse(m: dict) -> Iterator[Quote | Fill]:
 
 
 if __name__ == "__main__":
-    run("coinbase", parse)
+    run("coinbase", parse, server_time)

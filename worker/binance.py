@@ -13,6 +13,11 @@ def symbols() -> dict[str, str]:
     return {s["symbol"]: s["baseAsset"] for s in info["symbols"] if s["quoteAsset"] == "USDT"}
 
 
+def server_time() -> float:
+    """Binance's clock, in seconds."""
+    return get_json("https://api.binance.com/api/v3/time")["serverTime"] / 1000
+
+
 def inputs(chunk: list[str]) -> list[dict]:
     streams = [f"{s.lower()}@{kind}" for s in chunk for kind in ("trade", "ticker")]
     return [
@@ -35,4 +40,4 @@ def parse(m: dict) -> Iterator[Quote | Fill]:
 
 
 if __name__ == "__main__":
-    run("binance", parse)
+    run("binance", parse, server_time)

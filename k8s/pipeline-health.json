@@ -297,7 +297,7 @@
           "legendFormat": "p99 {{exchange}}"
         }
       ],
-      "description": "Trade time on the exchange clock to the time the worker processed it: exchange, network, Connect, Redpanda and the worker. It uses 2 clocks, so it includes their offset (about 0.1 s or less, measured). More than 30 s means RisingWave drops the trade (watermark)."
+      "description": "Trade time on the exchange clock to the time the worker processed it: exchange, network, Connect, Redpanda and the worker. The worker's time is corrected to NTP time (see the Clock offset panel). More than 30 s means RisingWave drops the trade (watermark)."
     },
     {
       "type": "timeseries",
@@ -621,11 +621,62 @@
     },
     {
       "type": "row",
-      "title": "Traces (1% of messages)",
+      "title": "Clocks",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 45,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Clock offset: reference clock \u2212 our clock",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Positive: our clock is behind. ntp = NTP time servers, error \u00b115 to 30 ms. binance, okx, coinbase = the exchange's server-time API, error \u00b170 to 130 ms (HTTP round trip). Kraken has no usable time API. The workers add the NTP offset to their own time. A large NTP offset means the Windows clock is out of sync: run `w32tm /resync` as administrator.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "fillOpacity": 0
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg by (reference) (clock_offset_milliseconds)",
+          "legendFormat": "{{reference}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Traces (1% of messages)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
         "w": 24,
         "h": 1
       }
@@ -639,7 +690,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 55,
         "w": 24,
         "h": 10
       },

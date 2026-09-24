@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from utils import Fill, Quote, get_json, run
 
 KEY = "this.data.0.symbol"
+# No server_time(): Kraken's time API returns whole seconds only, too coarse for a clock offset.
 # The REST API uses the old Kraken names; websocket v2 uses the ISO names.
 RENAME = {"XBT": "BTC", "XDG": "DOGE"}
 
