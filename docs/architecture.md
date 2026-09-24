@@ -422,10 +422,21 @@ OKX exchange to Kafka went from 120 s to 0.12 s (p50).
 
 A later measurement showed where the 12 ms of each write go: Redpanda acks a produce in 0.8 ms (p50), and
 the Kafka client in Connect (franz-go) waits 10 ms before it sends a request (its default `linger`, which
-Connect cannot change). franz-go already combines records during that wait, so the Connect batch only added
-up to 20 ms more. The current setting is no Connect batching and `max_in_flight: 256` (capacity about
-22,000 msg/s). Connect time for each message went from 25 ms to 11 ms (p50). About 110 ms of the 123 ms
-from OKX to Kafka happen before Connect: at the exchange and on the network.
+Connect cannot change). About 110 ms of the 123 ms from OKX to Kafka happen before Connect: at the exchange
+and on the network.
+
+**Message order.** A check of the trade IDs showed that Connect wrote the messages of one product out of
+order (on Binance, 25% to 35% of the steps went backwards). There were 2 causes, and each one alone reorders:
+
+| Setting | Why it reorders | Now |
+|---|---|---|
+| `pipeline.threads` (default: 1 for each CPU) | Several threads run the processors, and messages leave them in any order | 1 |
+| `max_in_flight` above 1 | Writes that are in flight at the same time reach Redpanda in any order | 1, with batches of up to 2,000 messages or 5 ms |
+
+With both at 1, the trade IDs of Coinbase, Kraken and Binance count up by 1 for each product, with no step
+backwards (measured on about 55,000 trades). Order costs speed: Connect needs about 24 ms for each message,
+compared with 10 ms with 256 writes in flight. The worker needs the order to add the correct quote to each
+trade, and gap detection needs it to find missing trade IDs.
 
 The same view showed about 0.6 skipped OKX messages each second: OKX sends an empty bid or ask for a market
 with no orders on one side. The parser now ignores those quotes.

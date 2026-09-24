@@ -34,7 +34,9 @@ def config(exchange: str, bases: str, chunk: int, trace_ratio: float) -> dict:
         "input": {"broker": {"inputs": inputs}},
         # traceparent: the worker continues the trace of this message.
         "pipeline": {
-            "processors": [{"mutation": f'meta key = {ex.KEY}.or("")\nmeta traceparent = tracing_span().traceparent'}]
+            # 1 thread: with several (the default is 1 per CPU), messages can leave the pipeline out of order.
+            "threads": 1,
+            "processors": [{"mutation": f'meta key = {ex.KEY}.or("")\nmeta traceparent = tracing_span().traceparent'}],
         },
         # Keyed by product: the quotes and trades of one product stay in order on one partition.
         "output": {
@@ -44,11 +46,15 @@ def config(exchange: str, bases: str, chunk: int, trace_ratio: float) -> dict:
                 "key": '${! meta("key") }',
                 "compression": "lz4",
                 "metadata": {"include_patterns": ["^traceparent$"]},
-                # Each write waits about 11 ms: the Kafka client (franz-go) lingers 10 ms to collect records
-                # into one request, and Redpanda acks in about 1 ms. So the in-flight limit sets the capacity:
-                # the default 10 gave about 860 msg/s (OKX fell minutes behind); 256 gives about 22,000.
-                # No Connect batching: franz-go already combines records, and a batch period only adds wait.
-                "max_in_flight": 256,
+                # Order matters: the worker adds each product's last quote to its trades, and gap detection
+                # needs each product's trade IDs in order. Connect sends writes that are in flight at the same
+                # time in any order, so more than 1 in flight reorders a product's messages (measured: 13,086
+                # backwards steps in 55,192 on Binance with 256). So: 1 write in flight, plus batches for
+                # throughput. Each write waits about 11 ms (franz-go lingers 10 ms, Redpanda acks in about
+                # 1 ms); one batch carries all messages of the last 5 ms, in arrival order. Measured: about
+                # 27 ms in Connect for each message, and all trade IDs in order.
+                "max_in_flight": 1,
+                "batching": {"count": 2000, "period": "5ms"},
             }
         },
         # Metrics: Prometheus format on :4195/metrics (the default), scraped by the collector.
