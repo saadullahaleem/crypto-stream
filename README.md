@@ -6,6 +6,7 @@ Exchanges: Coinbase, Kraken, Binance, OKX. Each has one file in `worker/` (symbo
 and one file in `k8s/exchanges/` (ingest pod, worker Deployment, KEDA autoscaler).
 
 Full description: [docs/architecture.md](docs/architecture.md).
+Lessons learned: [docs/lessons/](docs/lessons/README.md). The design before this build: [docs/old-system-arch-note.md](docs/old-system-arch-note.md).
 
 ## Deploy (Docker Desktop Kubernetes, kind type)
 
