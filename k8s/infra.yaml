@@ -121,6 +121,7 @@ spec:
             # The default listens on 127.0.0.1 only, so the collector cannot scrape it.
             - { name: RW_SINGLE_NODE_PROMETHEUS_LISTENER_ADDR, value: "0.0.0.0:1250" }
             - { name: RW_SINGLE_NODE_STORE_DIRECTORY, value: /data }
+            - { name: RW_SINGLE_NODE_CONFIG_PATH, value: /config/risingwave.toml }
           resources:
             # Below about 8Gi the embedded compactor gets too little memory and RisingWave stops at start.
             requests: { cpu: "1", memory: 4Gi }
@@ -128,9 +129,12 @@ spec:
           readinessProbe:
             tcpSocket: { port: 4566 }
             periodSeconds: 5
-          volumeMounts: [{ name: data, mountPath: /data }]
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: config, mountPath: /config }
       volumes:
         - { name: data, persistentVolumeClaim: { claimName: risingwave-data } }
+        - { name: config, configMap: { name: risingwave-config } }
 ---
 apiVersion: v1
 kind: Service

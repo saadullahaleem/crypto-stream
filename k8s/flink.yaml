@@ -1,0 +1,85 @@
+# Apache Flink 1.20 session cluster for the live page: 1 JobManager, 1 TaskManager.
+# The job (flink/live.sql) reads processed-data and writes 3 Fluss tables. The "submitter" container in the
+# JobManager pod submits it again whenever it is not running, for example after a restart.
+apiVersion: v1
+kind: Service
+metadata: { name: flink-jobmanager }
+spec:
+  selector: { app: flink-jobmanager }
+  ports:
+    - { name: rpc, port: 6123 }
+    - { name: blob, port: 6124 }
+    - { name: rest, port: 8081 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: flink-ui }
+spec:
+  type: LoadBalancer  # the Flink web UI on http://localhost:8081
+  selector: { app: flink-jobmanager }
+  ports: [{ port: 8081 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: flink-jobmanager }
+spec:
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: flink-jobmanager } }
+  template:
+    metadata:
+      labels: { app: flink-jobmanager }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9249" }
+    spec:
+      containers:
+        - name: jobmanager
+          image: crypto-flink:dev
+          imagePullPolicy: Never
+          args: [jobmanager]
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager
+                jobmanager.memory.process.size: 1024m
+                metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+                metrics.reporter.prom.port: 9249
+          resources:
+            requests: { cpu: 100m, memory: 1Gi }
+            limits: { memory: 1280Mi }
+        - name: submitter
+          image: crypto-flink:dev
+          imagePullPolicy: Never
+          command: [/opt/crypto/submit.sh]
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 768Mi }
+          volumeMounts: [{ name: sql, mountPath: /opt/crypto/sql }]
+      volumes:
+        - { name: sql, configMap: { name: flink-live-sql } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: flink-taskmanager }
+spec:
+  selector: { matchLabels: { app: flink-taskmanager } }
+  template:
+    metadata:
+      labels: { app: flink-taskmanager }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9249" }
+    spec:
+      containers:
+        - name: taskmanager
+          image: crypto-flink:dev
+          imagePullPolicy: Never
+          args: [taskmanager]
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager
+                taskmanager.numberOfTaskSlots: 4
+                taskmanager.memory.process.size: 2048m
+                taskmanager.memory.framework.off-heap.size: 256m
+                metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+                metrics.reporter.prom.port: 9249
+          resources:
+            requests: { cpu: 500m, memory: 2Gi }
+            limits: { memory: 2304Mi }

@@ -1,0 +1,81 @@
+# Apache Fluss 1.0: streaming storage for the live page. Flink writes the tables, and the live server reads them.
+# One pod: ZooKeeper, the coordinator server and one tablet server. They share one volume, because the coordinator
+# and the tablet server must see the same remote-data folder (the quickstart uses S3 for it).
+# ponytail: 1 tablet server, no replication, local "remote" storage. For production: 3 tablet servers, and S3.
+apiVersion: v1
+kind: Service
+metadata: { name: fluss }
+spec:
+  selector: { app: fluss }
+  ports:
+    - { name: coordinator, port: 9123 }
+    - { name: tablet, port: 9124 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: fluss }
+spec:
+  serviceName: fluss
+  replicas: 1
+  selector: { matchLabels: { app: fluss } }
+  template:
+    metadata:
+      labels: { app: fluss }
+      # Metrics of the tablet server (the coordinator's are on 9251, not scraped: one port per pod).
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9250" }
+    spec:
+      containers:
+        - name: zookeeper
+          image: zookeeper:3.9.2
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          # ZooKeeper's default folders, each a subfolder of the shared volume (its start script needs them to exist).
+          volumeMounts:
+            - { name: data, mountPath: /data, subPath: zookeeper-data }
+            - { name: data, mountPath: /datalog, subPath: zookeeper-log }
+        - name: coordinator
+          image: apache/fluss:1.0.0
+          imagePullPolicy: IfNotPresent
+          args: [coordinatorServer]
+          env:
+            # INTERNAL: server-to-server traffic inside this pod. CLIENT: Flink and the live server, through the Service.
+            - name: FLUSS_PROPERTIES
+              value: |
+                zookeeper.address: localhost:2181
+                bind.listeners: INTERNAL://localhost:0, CLIENT://0.0.0.0:9123
+                advertised.listeners: CLIENT://fluss.crypto.svc.cluster.local:9123
+                internal.listener.name: INTERNAL
+                remote.data.dir: /data/remote
+                metrics.reporters: prometheus
+                metrics.reporter.prometheus.port: 9251
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          volumeMounts: [{ name: data, mountPath: /data }]
+        - name: tablet
+          image: apache/fluss:1.0.0
+          imagePullPolicy: IfNotPresent
+          args: [tabletServer]
+          env:
+            - name: FLUSS_PROPERTIES
+              value: |
+                zookeeper.address: localhost:2181
+                bind.listeners: INTERNAL://localhost:0, CLIENT://0.0.0.0:9124
+                advertised.listeners: CLIENT://fluss.crypto.svc.cluster.local:9124
+                internal.listener.name: INTERNAL
+                tablet-server.id: 0
+                data.dir: /data/tablet
+                remote.data.dir: /data/remote
+                metrics.reporters: prometheus
+                metrics.reporter.prometheus.port: 9250
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits: { memory: 2Gi }
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 20Gi } }

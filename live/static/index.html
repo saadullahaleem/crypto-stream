@@ -12,8 +12,8 @@
     <main>
       <h1>Crypto Live</h1>
       <p class="lead">
-        Trades from Coinbase, Kraken, Binance and OKX, pushed by RisingWave subscriptions the moment each view
-        changes. New orders enter at the top. Changed rows flash green (up) or red (down). One row is one taker
+        Trades from Coinbase, Kraken, Binance and OKX, pushed to this page the moment a table changes. The source is
+        a Flink job writing Fluss tables, or RisingWave views: choose it next to the asset. New orders enter at the top. Changed rows flash green (up) or red (down). One row is one taker
         order: the fills it made at the same moment are added together.
       </p>
 
@@ -23,6 +23,13 @@
           <span id="status" class="status status--off">connecting</span>
           <span class="bar__title">ticks</span>
           <span class="bar__spacer"></span>
+          <label>
+            source
+            <select id="source">
+              <option value="fluss" selected>Flink + Fluss</option>
+              <option value="risingwave">RisingWave</option>
+            </select>
+          </label>
           <label>asset <select id="asset"></select></label>
           <label>
             min value

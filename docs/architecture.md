@@ -71,6 +71,8 @@ One trade goes through these steps:
 | `rw-init` | Job | `postgres:17-alpine` | Runs `init.sql` in RisingWave |
 | `grafana` | Deployment | `grafana/grafana` | Dashboard |
 | `live` | Deployment | `crypto-live:dev` (`live/`) | Live page: pushes view changes to the browser (section 14) |
+| `fluss` | StatefulSet, 1 pod: ZooKeeper, coordinator, tablet server; 20 Gi volume | `apache/fluss:1.0.0`, `zookeeper:3.9.2` | Streaming storage for the live page (section 15) |
+| `flink-jobmanager`, `flink-taskmanager` | Deployments | `crypto-flink:dev` (`flink/`) | The Flink job `crypto-live` (section 15) |
 | `console` | Deployment | `redpandadata/console` | Web UI for topics, groups and schemas |
 | KEDA | 3 pods in namespace `keda` | KEDA 2.21.0 | Autoscaling by consumer lag |
 | `otel-collector` | Deployment | `otel/opentelemetry-collector-contrib` | Receives and scrapes all telemetry (section 13) |
@@ -462,4 +464,42 @@ RisingWave view --CREATE SUBSCRIPTION--> change rows (op: Insert, UpdateInsert, 
 - The SQL on the page is read from `init.sql` at runtime (the `rw-init` ConfigMap), so it always matches the running views.
 - `price_gap` leaves out gaps over 5%: those are almost always 2 different tokens with the same ticker (for example LUNA).
 - The live page has no metrics or traces.
+
+## 15. Flink and Fluss for the live page
+
+The live page has 2 sources. The default is a Flink job that writes Fluss tables; RisingWave is the other.
+Grafana still reads RisingWave.
+
+```
+processed-data (Kafka) --> Flink job crypto-live (k8s/flink-live.sql)
+                              |- trades     (Fluss log table, 1 h)          every trade
+                              |- latest     (Fluss key table: exchange, product)   last price
+                              '- price_gap  (Fluss key table: asset)        gap between exchanges
+Fluss tables --> live/fluss_source.py (pyfluss: log and change-log scanners, limit scans) --> the page
+```
+
+| Part | Detail |
+|---|---|
+| Fluss | 1.0.0. One pod: ZooKeeper, a coordinator (port 9123) and a tablet server (9124), which share a volume for "remote" data. Listeners: `INTERNAL` inside the pod, `CLIENT` advertised as `fluss.crypto.svc.cluster.local`. |
+| Flink | 1.20.3 (Java 17), with `fluss-flink-1.20:1.0.0` and `flink-sql-connector-kafka:3.4.0-1.20`. One JobManager, one TaskManager (4 slots). Web UI on port 8081. |
+| Job start | A Flink session cluster without HA forgets its jobs when the JobManager restarts. A `submitter` container in the JobManager pod (`flink/submit.sh`) checks every 30 s and submits the SQL again if the job is missing. The SQL comes from a ConfigMap, so a SQL change needs no image build. |
+| State | The job keeps the last price of each product itself (`latest_prices`, about 2,000 rows) and builds `price_gap` from it. Checkpoints every 10 s, kept in the JobManager's memory. After a JobManager restart, the job starts from the end of the topic. |
+| Fluss writer | Waits up to 100 ms by default to collect rows (`client.writer.batch-timeout`). Set to 5 ms with a hint on each `INSERT`, because the catalog does not accept writer options. |
+| Live server | `?source=fluss` or `?source=risingwave` on `/events`, `/assets` and `/sql`. The page shows the SQL that runs: the Flink `INSERT` or the RisingWave view. |
+
+**Measured freshness** (2026-09-24, 60 s, about 20,000 trades each, NTP-corrected; trade on the exchange to
+arrival at a reader):
+
+| | Flink + Fluss | RisingWave (250 ms checkpoints) |
+|---|---|---|
+| p10 | 204 ms | 342 ms |
+| p50 | 393 ms | 456 ms |
+| p90 | 610 ms | 596 ms |
+| p99 | 731 ms | 660 ms |
+
+Flink + Fluss is faster for the typical trade, not at the slow end. Not measured yet: where the time between the
+worker and a Fluss reader goes (Flink's Kafka source, the Fluss writer, the reader's fetch).
+
+**Limits:** 1 tablet server with no replication; the "remote" storage is a local folder, so no client outside the
+Fluss pod can read a key table's snapshot files; checkpoints are lost when the JobManager restarts.
 

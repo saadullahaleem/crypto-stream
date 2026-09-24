@@ -15,7 +15,8 @@ Lessons learned: [docs/lessons/](docs/lessons/README.md). The design before this
    docker build -t crypto-worker:dev worker
    docker save crypto-worker:dev | docker exec -i desktop-control-plane ctr -n k8s.io images import -
    ```
-   The live page has its own image: the same 2 commands with `crypto-live:dev` and the `live` folder.
+   The live page and Flink have their own images: the same 2 commands with `crypto-live:dev` and the `live` folder,
+   and with `crypto-flink:dev` and the `flink` folder.
 2. Install KEDA one time:
    ```bash
    kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
@@ -34,7 +35,8 @@ Lessons learned: [docs/lessons/](docs/lessons/README.md). The design before this
 | http://localhost:3000 | Grafana dashboard |
 | http://localhost:8080 | Redpanda Console (topics, consumer groups, schema) |
 | `localhost:4566`, user `root`, database `dev` | RisingWave (Postgres protocol) |
-| http://localhost:8000 | Live page: trade tape, and views with their SQL, pushed by RisingWave subscriptions |
+| http://localhost:8000 | Live page: trade tape, and views with their SQL. Source: Flink + Fluss (default) or RisingWave |
+| http://localhost:8081 | Flink web UI (the job `crypto-live`) |
 | http://localhost:3000/d/pipeline-health | Pipeline Health: throughput, lag, latency, resources, traces |
 | http://localhost:16686 | Jaeger (traces) |
 | http://localhost:9090 | Prometheus (metrics) |

@@ -1,6 +1,5 @@
--- A checkpoint every 250 ms (default 1,000 ms): new rows become visible in the views and subscriptions at each
--- checkpoint. Measured on 2026-09-24: trade age at a subscriber p50 about 920 -> 460 ms, for about 1.7 more CPU cores.
-ALTER SYSTEM SET barrier_interval_ms = 250;
+-- The checkpoint interval (250 ms) is in k8s/risingwave.toml. Not here: this file runs on every deploy, and
+-- ALTER SYSTEM SET barrier_interval_ms, run again with the same value, blocked all checkpoints.
 
 -- A source stores nothing. Each view below keeps only the time range the dashboard shows.
 -- The watermark lets RisingWave drop the state of a window once no more trades can arrive for it;

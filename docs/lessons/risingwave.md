@@ -86,7 +86,24 @@ after the next checkpoint, so that interval was the largest wait in the whole pi
 460 ms (p50). Cost: RisingWave CPU 1.24 → 2.95 cores. A checkpoint still takes 67 ms (p50) and 219 ms (p99), so
 checkpoints do not queue up. Below about 250 ms, they would start to.
 
-## 9. Smaller points
+## 9. ALTER SYSTEM with the same value blocked all checkpoints
+
+**What happened:** after a deploy, RisingWave's views stopped updating, its CPU went from 3 to 13 cores, and
+completed checkpoints went from 4 each second to 0. It did not recover by itself.
+
+**Cause:** `init.sql` contained `ALTER SYSTEM SET barrier_interval_ms = 250`, and the `rw-init` Job runs `init.sql`
+on every deploy. The first run worked. The second run set the same value again and never returned: RisingWave's
+slow-query log showed it still running after 11 minutes (`slow query elapsed=660000ms`), and it started at the
+same second the views stopped. Stopping the client did not help. This looks like a RisingWave 3.1 bug.
+
+**Fix:** a restart of RisingWave, and the setting moved to a startup config file
+([k8s/risingwave.toml](../../k8s/risingwave.toml), `RW_SINGLE_NODE_CONFIG_PATH`). RisingWave reads its `[system]`
+values when a new cluster starts. `init.sql` no longer contains `ALTER SYSTEM`.
+
+**Lesson:** a file that runs on every deploy must contain only statements that do nothing when run again.
+`CREATE ... IF NOT EXISTS` is safe; `ALTER SYSTEM` is not.
+
+## 10. Smaller points
 
 - `CREATE SOURCE` fails if the Kafka topic does not exist yet. The `rw-init` Job retries until the topics Job is done.
 - Subscriptions push the changes of a view: `CREATE SUBSCRIPTION`, then `DECLARE ... SUBSCRIPTION CURSOR` and

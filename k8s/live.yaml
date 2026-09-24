@@ -24,7 +24,10 @@ spec:
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { memory: 256Mi }
-          # The page shows the SQL of each view exactly as written in init.sql.
-          volumeMounts: [{ name: sql, mountPath: /sql }]
+          # The page shows the SQL of each view exactly as it runs: init.sql (RisingWave), flink-live.sql (Flink).
+          volumeMounts:
+            - { name: sql, mountPath: /sql }
+            - { name: flink-sql, mountPath: /flink-sql }
       volumes:
         - { name: sql, configMap: { name: rw-init } }
+        - { name: flink-sql, configMap: { name: flink-live-sql } }

@@ -55,6 +55,13 @@ export class GapTable {
     this.lastDraw = 0;
   }
 
+  clear() {
+    this.body.replaceChildren();
+    this.gaps.clear();
+    this.shown.clear();
+    this.changed = false;
+  }
+
   apply(change) {
     if (change.op === "Delete") this.gaps.delete(change.asset);
     else this.gaps.set(change.asset, change);

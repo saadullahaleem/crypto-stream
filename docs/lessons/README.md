@@ -11,6 +11,7 @@ Each lesson has the same parts: **What happened**, **Cause**, **Fix**, and (wher
 | [risingwave.md](risingwave.md) | Watermarks, time filters, memory, metrics, subscriptions |
 | [kubernetes-and-docker-desktop.md](kubernetes-and-docker-desktop.md) | The local cluster, images, disks, Windows tools |
 | [observability.md](observability.md) | Metrics, traces, dashboards, KEDA |
+| [flink-and-fluss.md](flink-and-fluss.md) | Flink 1.20 and Fluss 1.0 on Kubernetes, and pyfluss |
 | [measuring-and-debugging.md](measuring-and-debugging.md) | How we worked: claims we made that measurements proved wrong |
 
 ## How to add a lesson

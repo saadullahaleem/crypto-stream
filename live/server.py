@@ -1,7 +1,10 @@
-"""Live page: pushes the changes of RisingWave views to the browser.
+"""Live page: pushes the changes of views to the browser, from one of 2 sources.
 
-RisingWave subscriptions (CREATE SUBSCRIPTION in k8s/init.sql) give each change of a view as a row with an
-`op` column. One thread reads each subscription and passes the changes to the open pages as Server-Sent Events.
+- fluss (default): the tables that the Flink job writes (k8s/flink-live.sql), read by fluss_source.py.
+- risingwave: RisingWave subscriptions (CREATE SUBSCRIPTION in k8s/init.sql). One thread reads each
+  subscription. Each change is a row with an `op` column.
+
+Each open page chooses a source and an asset, and gets those changes as Server-Sent Events.
 """
 
 import json
@@ -18,15 +21,19 @@ from urllib.parse import parse_qs, urlparse
 
 import psycopg
 
+from fluss_source import FlussSource
+
 DSN = os.environ.get("RW_DSN", "host=risingwave port=4566 user=root dbname=dev")
 INIT_SQL = Path(os.environ.get("INIT_SQL", "/sql/init.sql"))
+FLINK_SQL = Path(os.environ.get("FLINK_SQL", "/flink-sql/live.sql"))
+SOURCES = ("fluss", "risingwave")
 STATIC = Path(__file__).with_name("static")
 CONTENT_TYPES = {".html": "text/html", ".css": "text/css", ".js": "text/javascript"}
 SUBSCRIPTIONS = {"trade": "ticks_sub", "latest": "latest_sub", "gap": "price_gap_sub"}
 SHOWN_VIEWS = ("latest", "price_gap")
 
-# Event queue of each open page -> the asset that page shows.
-clients: dict[queue.Queue, str] = {}
+# Event queue of each open page -> (source, asset) that page shows.
+clients: dict[queue.Queue, tuple[str, str]] = {}
 clients_lock = threading.Lock()
 
 
@@ -45,13 +52,17 @@ def event(kind: str, row: dict[str, Any]) -> dict[str, Any]:
     row.pop("rw_timestamp", None)
     if kind == "trade":
         row["asset"] = row["product_id"].split("-")[0]
-    return {"kind": kind, **row}
+    return {"kind": kind, **row, "source": "risingwave"}
 
 
 def publish(ev: dict[str, Any]) -> None:
     data = to_json(ev)
     with clients_lock:
-        targets = [q for q, asset in clients.items() if ev["kind"] == "gap" or ev["asset"] == asset]
+        targets = [
+            q
+            for q, (source, asset) in clients.items()
+            if ev["source"] == source and (ev["kind"] == "gap" or ev["asset"] == asset)
+        ]
     for q in targets:
         try:
             q.put_nowait(data)
@@ -80,8 +91,10 @@ def follow(kind: str, subscription: str) -> None:
             time.sleep(2)
 
 
-def snapshot(asset: str) -> list[dict[str, Any]]:
+def snapshot(source: str, asset: str) -> list[dict[str, Any]]:
     """The current rows, so a new page does not start empty."""
+    if source == "fluss":
+        return fluss_source.snapshot(asset)
     # More than the 30 tape rows: the page joins fills of one order and hides small orders.
     trades = query("SELECT * FROM ticks WHERE product_id LIKE %s ORDER BY ts DESC LIMIT 500", (asset + "-%",))
     latest = query("SELECT * FROM latest WHERE asset = %s", (asset,))
@@ -93,29 +106,43 @@ def snapshot(asset: str) -> list[dict[str, Any]]:
     )
 
 
-def view_sql(name: str) -> str:
-    """The CREATE statement of a view, as written in init.sql."""
-    m = re.search(rf"CREATE MATERIALIZED VIEW IF NOT EXISTS {name} AS\n.*?;", INIT_SQL.read_text(), re.S)
+def view_sql(source: str, name: str) -> str:
+    """The SQL that computes a view: RisingWave's CREATE statement, or the Flink INSERT for the Fluss table."""
+    if source == "fluss":
+        m = re.search(rf"INSERT INTO fluss\.crypto\.{name} .*?;", FLINK_SQL.read_text(), re.S)
+    else:
+        m = re.search(rf"CREATE MATERIALIZED VIEW IF NOT EXISTS {name} AS\n.*?;", INIT_SQL.read_text(), re.S)
     return m[0] if m else ""
+
+
+def assets(source: str) -> list[str]:
+    if source == "fluss":
+        return fluss_source.assets()
+    rows = query(
+        "SELECT asset FROM latest GROUP BY asset "
+        "ORDER BY count(*) DESC, sum(volume_24h * price) DESC NULLS LAST LIMIT 200"
+    )
+    return [r["asset"] for r in rows]
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = urlparse(self.path)
+        params = parse_qs(url.query)
+        source = params.get("source", ["fluss"])[0]
+        if source not in SOURCES:
+            self.send_error(400, "source must be fluss or risingwave")
+            return
         if url.path == "/":
             self.static("index.html")
         elif url.path.startswith("/static/"):
             self.static(url.path.removeprefix("/static/"))
         elif url.path == "/assets":
-            rows = query(
-                "SELECT asset FROM latest GROUP BY asset "
-                "ORDER BY count(*) DESC, sum(volume_24h * price) DESC NULLS LAST LIMIT 200"
-            )
-            self.reply(json.dumps([r["asset"] for r in rows]).encode(), "application/json")
+            self.reply(json.dumps(assets(source)).encode(), "application/json")
         elif url.path == "/sql":
-            self.reply(json.dumps({v: view_sql(v) for v in SHOWN_VIEWS}).encode(), "application/json")
+            self.reply(json.dumps({v: view_sql(source, v) for v in SHOWN_VIEWS}).encode(), "application/json")
         elif url.path == "/events":
-            self.stream(parse_qs(url.query).get("asset", ["BTC"])[0])
+            self.stream(source, params.get("asset", ["BTC"])[0])
         else:
             self.send_error(404)
 
@@ -134,7 +161,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def stream(self, asset: str) -> None:
+    def stream(self, source: str, asset: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -142,9 +169,9 @@ class Handler(BaseHTTPRequestHandler):
         q: queue.Queue = queue.Queue(maxsize=10000)
         # Register before the snapshot, so no change falls between the snapshot and the stream.
         with clients_lock:
-            clients[q] = asset
+            clients[q] = (source, asset)
         try:
-            for ev in snapshot(asset):
+            for ev in snapshot(source, asset):
                 self.send_event(to_json(ev | {"snapshot": True}))
             while True:
                 try:
@@ -166,7 +193,10 @@ class Handler(BaseHTTPRequestHandler):
         pass  # no line for each request
 
 
+fluss_source: FlussSource  # set at startup
+
 if __name__ == "__main__":
+    fluss_source = FlussSource(publish)
     for kind, subscription in SUBSCRIPTIONS.items():
         threading.Thread(target=follow, args=(kind, subscription), daemon=True).start()
     server = ThreadingHTTPServer(("", 8000), Handler)

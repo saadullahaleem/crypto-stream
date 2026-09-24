@@ -5,6 +5,8 @@ resources:
   - jobs.yaml
   - observability.yaml
   - live.yaml
+  - fluss.yaml
+  - flink.yaml
   - exchanges/coinbase.yaml
   - exchanges/kraken.yaml
   - exchanges/binance.yaml
@@ -28,6 +30,10 @@ configMapGenerator:
     files: [otel-collector.yaml]
   - name: prometheus
     files: [prometheus.yaml]
+  - name: flink-live-sql
+    files: [live.sql=flink-live.sql]
+  - name: risingwave-config
+    files: [risingwave.toml]
   - name: rw-init
     files: [init.sql]
   - name: grafana-datasources

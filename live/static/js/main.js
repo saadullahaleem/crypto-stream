@@ -17,13 +17,17 @@ let source = null;
 let pending = [];
 let tradesThisSecond = 0;
 
+const chosenSource = () => $("#source").value;
+
 function connect(asset) {
   source?.close();
   tape.clear();
   latest.clear();
+  gaps.clear();
   pending = [];
 
-  source = new EventSource(`/events?asset=${encodeURIComponent(asset)}`);
+  const params = new URLSearchParams({ source: chosenSource(), asset });
+  source = new EventSource(`/events?${params}`);
   source.onopen = () => setStatus("live");
   source.onerror = () => setStatus("reconnecting");
   source.onmessage = (message) => {
@@ -59,6 +63,7 @@ function drawFrame(now) {
 
 function setUpControls() {
   $("#asset").addEventListener("change", (e) => connect(e.target.value));
+  $("#source").addEventListener("change", () => loadSource());
 
   const minValue = $("#min-value");
   tape.minValue = Number(minValue.value);
@@ -90,22 +95,26 @@ function setUpControls() {
 }
 
 async function showSql() {
-  const views = await (await fetch("/sql")).json();
+  const views = await (await fetch(`/sql?source=${chosenSource()}`)).json();
   for (const [name, sql] of Object.entries(views)) {
     $(`#sql-${name}`).innerHTML = highlightSql(sql);
   }
 }
 
+/** Load the SQL, the asset list and the stream of the chosen source. Keeps the asset if the source has it. */
+async function loadSource() {
+  showSql();
+  const assets = await (await fetch(`/assets?source=${chosenSource()}`)).json();
+  const select = $("#asset");
+  const previous = select.value;
+  select.replaceChildren(...assets.map((asset) => new Option(asset, asset)));
+  select.value = assets.includes(previous) ? previous : assets.includes("BTC") ? "BTC" : assets[0];
+  connect(select.value);
+}
+
 async function start() {
   setUpControls();
-  showSql();
-
-  const assets = await (await fetch("/assets")).json();
-  const select = $("#asset");
-  select.replaceChildren(...assets.map((asset) => new Option(asset, asset)));
-  select.value = assets.includes("BTC") ? "BTC" : assets[0];
-  connect(select.value);
-
+  await loadSource();
   requestAnimationFrame(drawFrame);
 }
 

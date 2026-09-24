@@ -1,0 +1,8 @@
+# RisingWave's startup config (RW_SINGLE_NODE_CONFIG_PATH). RisingWave uses the [system] values when a new cluster
+# starts, and stores them; later changes need ALTER SYSTEM, run by hand, once.
+[system]
+# A checkpoint every 250 ms (default 1,000 ms). New rows become visible at each checkpoint.
+# Measured on 2026-09-24: trade age at a subscriber p50 about 920 -> 460 ms, for about 1.7 more CPU cores.
+# Do not put ALTER SYSTEM SET barrier_interval_ms into init.sql: run again with the same value, it blocked all
+# checkpoints for good (RisingWave 3.1; see docs/lessons/risingwave.md).
+barrier_interval_ms = 250
