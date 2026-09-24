@@ -67,7 +67,7 @@ One trade goes through these steps:
 | `schema` | Job | `crypto-worker:dev` | Puts the `Trade` JSON schema in the registry |
 | `<exchange>-ingest` | Deployment, 1 pod each | init: `crypto-worker:dev`, main: `redpandadata/connect` | Websocket to Kafka |
 | `<exchange>-worker` | Deployment, 1 to 12 pods (KEDA) | `crypto-worker:dev` | Raw message to `Trade` |
-| `risingwave` | Deployment, 1 pod, `single_node` | `risingwavelabs/risingwave` | Streaming SQL views |
+| `risingwave` | Deployment, 1 pod, `single_node`, 20 Gi volume | `risingwavelabs/risingwave` | Streaming SQL views |
 | `rw-init` | Job | `postgres:17-alpine` | Runs `init.sql` in RisingWave |
 | `grafana` | Deployment | `grafana/grafana` | Dashboard |
 | `live` | Deployment | `crypto-live:dev` (`live/`) | Live page: pushes view changes to the browser (section 14) |
@@ -318,7 +318,7 @@ The Docker Desktop cluster is the kind type, so it does not see local images. Ea
 | The symbol list is fetched only at pod start | New listings are not ingested until the ingest pod restarts | Restart the ingest pods on a schedule, or refresh the list while the pod runs |
 | One ingest pod for each exchange | If the pod stops, that exchange has a gap. A second replica would send each message 2 times. | Split the symbols over more ingest pods |
 | Watermark 30 s | A trade more than 30 s older than the newest trade is dropped from all views. The 4-minute OKX test lost those minutes. | A longer watermark, with more open windows in memory |
-| RisingWave `single_node` | A restart rebuilds the views from `processed-data` (2 h retention). Candles older than 2 h are lost. | RisingWave Helm chart with object storage |
+| RisingWave `single_node` | One pod with one volume: no failover, and the pod must be on the node that has the volume | RisingWave Helm chart with a separate meta store and object storage |
 | Quote memory is in the worker | After a rebalance, `spread` is empty until the next quote of the product | Keep quotes in a compacted topic |
 | Binance quotes once each second | The Binance spread can be 1 s old | `@bookTicker` |
 | Bid and ask sizes are not kept | No depth or liquidity information | L2 (next version) |

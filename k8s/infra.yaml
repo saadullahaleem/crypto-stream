@@ -90,11 +90,19 @@ spec:
   selector: { app: risingwave }
   ports: [{ port: 4566 }]
 ---
+# RisingWave's data: without this volume, a restart of the pod deletes every source, view and subscription.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: risingwave-data }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 20Gi } }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: risingwave }
 spec:
-  strategy: { type: Recreate }
+  strategy: { type: Recreate }  # the volume can be attached to only one pod at a time
   selector: { matchLabels: { app: risingwave } }
   template:
     metadata:
@@ -102,8 +110,8 @@ spec:
       annotations: { prometheus.io/scrape: "true", prometheus.io/port: "1250" }
     spec:
       containers:
-        # ponytail: single_node keeps its state in the container, so a restart rebuilds the views from
-        # processed-data (2h retention). Use the RisingWave Helm chart with object storage to keep state.
+        # ponytail: single_node keeps its metadata and data on one local volume. For more than one node,
+        # use the RisingWave Helm chart with a separate meta store and object storage.
         - name: risingwave
           image: risingwavelabs/risingwave:latest
           imagePullPolicy: IfNotPresent
@@ -112,6 +120,7 @@ spec:
             - { name: RW_TELEMETRY_ENABLED, value: "false" }
             # The default listens on 127.0.0.1 only, so the collector cannot scrape it.
             - { name: RW_SINGLE_NODE_PROMETHEUS_LISTENER_ADDR, value: "0.0.0.0:1250" }
+            - { name: RW_SINGLE_NODE_STORE_DIRECTORY, value: /data }
           resources:
             # Below about 8Gi the embedded compactor gets too little memory and RisingWave stops at start.
             requests: { cpu: "1", memory: 4Gi }
@@ -119,6 +128,9 @@ spec:
           readinessProbe:
             tcpSocket: { port: 4566 }
             periodSeconds: 5
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes:
+        - { name: data, persistentVolumeClaim: { claimName: risingwave-data } }
 ---
 apiVersion: v1
 kind: Service

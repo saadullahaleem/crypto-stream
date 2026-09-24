@@ -9,6 +9,7 @@ Claims I made on the first day that a measurement later proved wrong, and what t
 | 3 | "The Docker clock is about 1 second behind the exchanges." | Pod time compared with Binance's server time | Wrong. The difference was about 0.1 s or less. RisingWave's `now()` had misled me. |
 | 4 | "`max_in_flight` reorders the messages." | Trade-ID order, with each setting changed alone | Half right. Pipeline threads also reorder, and each cause alone is enough. |
 | 5 | "Connect needs only 10 ms for each message." | Trade-ID order at that setting | That speed came from writes out of order. With the order kept, it is about 24 ms. |
+| 6 | "A RisingWave restart builds the views again from `processed-data`." | A restart of the computer | Wrong. The restart deleted all RisingWave objects. Fixed with a volume. |
 
 ## What worked
 
@@ -16,6 +17,7 @@ Claims I made on the first day that a measurement later proved wrong, and what t
 - **Change one setting at a time.** Claim 4 looked fixed only when both settings changed.
 - **Check the data itself, not only the metrics.** The trade IDs in the raw topics showed the order problem.
   No dashboard showed it.
+- **Test a restart before you trust a statement about restarts.** Claim 6 was in a comment and in the architecture document for a day.
 - **Check that a test measures the new code.** One order test ran on the old config, because my edit had not
   applied. The result looked like "the fix does not work".
 - **Keep a small script for each check,** so the same check runs before and after a change: trade-ID order

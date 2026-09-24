@@ -59,11 +59,26 @@ Redpanda's lag formula uses an old offset.
 **Fix:** the lag panel shows only the `*-worker` groups. To see if RisingWave falls behind, use its rows read each
 second and its barrier latency.
 
-## 7. Smaller points
+## 7. A restart deleted every source, view and subscription
+
+**What happened:** after a restart of the computer, the Grafana market dashboard and the live page showed no data.
+The Pipeline Health dashboard still worked, because it reads Prometheus.
+
+**Cause:** `single_node` kept its metadata and data inside the container. The restart gave it a new, empty
+container, so RisingWave had no source, no views and no subscriptions. The `rw-init` Job that makes them had
+run once, on the first deploy, and Kubernetes had deleted it 2 minutes later (`ttlSecondsAfterFinished`), so
+nothing made them again.
+
+**Fix:** a 20 GiB PersistentVolumeClaim, and `RW_SINGLE_NODE_STORE_DIRECTORY=/data`
+([k8s/infra.yaml](../../k8s/infra.yaml)). Tested: after a deleted pod, all 10 objects were still there, and the
+candle rows kept growing (34,500 → 34,580).
+
+**My mistake:** a comment and the architecture document said that a restart builds the views again from
+`processed-data`. I wrote that without a test. A restart test on the first day would have shown the problem.
+
+## 8. Smaller points
 
 - `CREATE SOURCE` fails if the Kafka topic does not exist yet. The `rw-init` Job retries until the topics Job is done.
-- `single_node` keeps its state in the container. A restart builds all views again from `processed-data`
-  (2 hours of retention).
 - Subscriptions push the changes of a view: `CREATE SUBSCRIPTION`, then `DECLARE ... SUBSCRIPTION CURSOR` and
   `FETCH n FROM cur WITH (timeout = '1s')`. Each row has an `op` column: `Insert`, `Delete`, `UpdateDelete`,
   `UpdateInsert`. The live page uses this.
