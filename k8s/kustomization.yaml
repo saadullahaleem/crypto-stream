@@ -30,6 +30,8 @@ configMapGenerator:
     files: [otel-collector.yaml]
   - name: prometheus
     files: [prometheus.yaml]
+  - name: tempo
+    files: [tempo.yaml]
   - name: flink-live-sql
     files: [live.sql=flink-live.sql]
   - name: risingwave-config

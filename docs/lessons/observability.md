@@ -1,6 +1,6 @@
 # Observability
 
-OpenTelemetry Collector → Jaeger (traces) and Prometheus (metrics) → Grafana. Details:
+OpenTelemetry Collector → Tempo (traces) and Prometheus (metrics) → Grafana. Details:
 [docs/architecture.md](../architecture.md), section 13.
 
 ## 1. The dashboard found 2 real problems the first time we opened it
@@ -14,6 +14,8 @@ Both problems existed before the dashboard. The trade-latency metric (exchange t
 useful single metric, because a delay in any part before RisingWave shows in it.
 
 ## 2. Jaeger 2.21 removed the API that Grafana uses
+
+On 2026-09-26, Tempo replaced Jaeger. This lesson is history.
 
 **What happened:** the Grafana Jaeger data source failed with `404 Not Found`.
 

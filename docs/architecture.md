@@ -76,7 +76,7 @@ One trade goes through these steps:
 | `console` | Deployment | `redpandadata/console` | Web UI for topics, groups and schemas |
 | KEDA | 3 pods in namespace `keda` | KEDA 2.21.0 | Autoscaling by consumer lag |
 | `otel-collector` | Deployment | `otel/opentelemetry-collector-contrib` | Receives and scrapes all telemetry (section 13) |
-| `jaeger` | Deployment | `jaegertracing/jaeger:2.20.0` | Traces, in memory |
+| `tempo` | Deployment | `grafana/tempo:3.0.3` | Traces, 2 days, `emptyDir` |
 | `prometheus` | Deployment | `prom/prometheus` | Metrics, 2 days, OTLP receiver |
 
 The 3 Jobs can run again safely. They check what exists before they change anything.
@@ -90,7 +90,6 @@ The 3 Jobs can run again safely. They check what exists before they change anyth
 | `localhost:4566`, user `root`, database `dev` | RisingWave, Postgres protocol |
 | http://localhost:3000/d/pipeline-health | Grafana, Pipeline Health dashboard |
 | http://localhost:3000/d/k8s | Grafana, Kubernetes dashboard |
-| http://localhost:16686 | Jaeger UI |
 | http://localhost:9090 | Prometheus UI |
 
 Docker Desktop serves `LoadBalancer` services on `localhost`.
@@ -327,8 +326,7 @@ The Docker Desktop cluster is the kind type, so it does not see local images. Ea
 | Bid and ask sizes are not kept | No depth or liquidity information | L2 (next version) |
 | At-least-once delivery | After a worker crash, up to 1 s of trades can show 2 times | Deduplicate by exchange trade ID in RisingWave |
 | Single Redpanda broker | No replication | 3 brokers with replication factor 3 |
-| Jaeger and Prometheus store in memory or `emptyDir` | Traces and metrics are lost on restart | Jaeger with Badger or Elasticsearch, Prometheus with a PVC |
-| Jaeger pinned to 2.20.0 | No Jaeger updates | Update when the Grafana Jaeger data source uses `/api/v3` |
+| Tempo and Prometheus store in `emptyDir` | Traces and metrics are lost when the pod moves | PVCs, or object storage for Tempo |
 
 ## 13. Observability
 
@@ -342,7 +340,7 @@ flowchart LR
     KL[Kubelet<br/>pod CPU and memory]
   end
   OC[OpenTelemetry Collector]
-  J[(Jaeger 2.20<br/>in memory)]
+  J[(Tempo 3.0<br/>2 days)]
   P[(Prometheus<br/>OTLP receiver, 2 days)]
   G[Grafana dashboards]
   CN & WK & GF -- OTLP --> OC
@@ -354,7 +352,7 @@ flowchart LR
 ```
 
 Every metric and every trace goes through the collector (`k8s/otel-collector.yaml`). Nothing sends to
-Jaeger or Prometheus directly, and Prometheus scrapes nothing itself.
+Tempo or Prometheus directly, and Prometheus scrapes nothing itself.
 
 ### 13.1 Traces
 
@@ -403,14 +401,14 @@ Settings that were necessary:
 - Redpanda: `enable_consumer_group_metrics` must include `consumer_lag` (set by the `topics` Job).
 - RisingWave: `RW_SINGLE_NODE_PROMETHEUS_LISTENER_ADDR=0.0.0.0:1250`. The default listens on 127.0.0.1 only.
 - Workers: `service.instance.id` = pod name, so the metrics of 2 replicas do not overwrite each other.
-- Jaeger is pinned to 2.20.0: 2.21 removed the `/api/*` JSON API, and the Grafana 13.2 Jaeger data source still uses it.
+- Tempo has no UI of its own. Open traces in Grafana: Explore, data source Tempo, or the "Recent traces" table on Pipeline Health.
 
 ### 13.3 Dashboards
 
 | Dashboard | Data source | Content |
 |---|---|---|
 | Crypto Live (home) | RisingWave | Market data |
-| Pipeline Health | Prometheus, Jaeger | Throughput, lag, worker pods, trade latency, parse time, Redpanda and RisingWave, pod CPU and memory, collector, recent traces |
+| Pipeline Health | Prometheus, Tempo | Throughput, lag, worker pods, trade latency, parse time, Redpanda and RisingWave, pod CPU and memory, collector, recent traces |
 
 RisingWave consumer groups (`rw-consumer-*`) are left out of the lag panel. RisingWave keeps its offsets
 inside itself and does not commit them, so their lag grows without meaning.

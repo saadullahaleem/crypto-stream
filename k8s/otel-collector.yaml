@@ -1,5 +1,5 @@
 # OpenTelemetry Collector: all metrics and traces go through here.
-#   traces:  OTLP (Connect, workers, Grafana)                      -> Jaeger
+#   traces:  OTLP (Connect, workers, Grafana)                      -> Tempo
 #   metrics: OTLP (workers) + Prometheus scrape + kubelet stats + cluster state -> Prometheus (its OTLP receiver)
 receivers:
   otlp:
@@ -74,8 +74,8 @@ processors:
           - set(attributes["k8s.volume.name"], resource.attributes["k8s.volume.name"]) where resource.attributes["k8s.volume.name"] != nil
 
 exporters:
-  otlp/jaeger:
-    endpoint: jaeger:4317
+  otlp/tempo:
+    endpoint: tempo:4317
     tls: { insecure: true }
   otlphttp/prometheus:
     endpoint: http://prometheus:9090/api/v1/otlp
@@ -90,7 +90,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp/tempo]
     metrics:
       receivers: [otlp, prometheus, kubeletstats, k8s_cluster]
       processors: [memory_limiter, transform/k8s-labels, batch]

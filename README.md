@@ -39,7 +39,7 @@ Lessons learned: [docs/lessons/](docs/lessons/README.md). The design before this
 | http://localhost:8081 | Flink web UI (the job `crypto-live`) |
 | http://localhost:3000/d/pipeline-health | Pipeline Health: throughput, lag, latency, resources, traces |
 | http://localhost:3000/d/k8s | Kubernetes: node, pods, workloads, KEDA, resources by pod |
-| http://localhost:16686 | Jaeger (traces) |
+| http://localhost:3000/explore | Traces: Grafana Explore, data source Tempo |
 | http://localhost:9090 | Prometheus (metrics) |
 
 ## Settings

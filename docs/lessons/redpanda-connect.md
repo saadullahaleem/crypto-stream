@@ -79,6 +79,6 @@ setting for this.
 - A JSON file is valid YAML, so Python can write the config as JSON.
 - `tracing_span().traceparent` in Bloblang gives the W3C trace ID of a message. With
   `metadata.include_patterns: ["^traceparent$"]` it goes into a Kafka header, and the worker continues the trace.
-  Because we take it in the `mutation` step, Jaeger shows the worker span under `mutation`, not under the output span.
+  Because we take it in the `mutation` step, the trace view shows the worker span under `mutation`, not under the output span.
 - The newer `redpanda` output has `inject_tracing_map`, which could fix that tree shape. Not tested.
 - Connect serves Prometheus metrics on `:4195/metrics` (`output_sent_total`, `input_received_total`).

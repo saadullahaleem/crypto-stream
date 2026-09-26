@@ -1,4 +1,4 @@
-# OpenTelemetry Collector -> Jaeger (traces) and Prometheus (metrics). Grafana reads both.
+# OpenTelemetry Collector -> Tempo (traces) and Prometheus (metrics). Grafana reads both.
 apiVersion: v1
 kind: ServiceAccount
 metadata: { name: otel-collector }
@@ -69,31 +69,40 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: jaeger }
+metadata: { name: tempo }
 spec:
-  type: LoadBalancer
-  selector: { app: jaeger }
+  selector: { app: tempo }
   ports:
-    - { name: ui, port: 16686 }
+    - { name: http, port: 3200 }
     - { name: otlp-grpc, port: 4317 }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: jaeger }
+metadata: { name: tempo }
 spec:
-  selector: { matchLabels: { app: jaeger } }
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: tempo } }
   template:
-    metadata: { labels: { app: jaeger } }
+    metadata:
+      labels: { app: tempo }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "3200" }
     spec:
       containers:
-        # ponytail: all-in-one with in-memory storage: traces are lost on restart. Use Badger or Elasticsearch storage to keep them.
-        - name: jaeger
-          # 2.21 removed the /api/* JSON API that the Grafana Jaeger data source (13.2) uses. Keep 2.20 until Grafana uses /api/v3.
-          image: jaegertracing/jaeger:2.20.0
+        - name: tempo
+          image: grafana/tempo:3.0.3
           imagePullPolicy: IfNotPresent
+          args: [-target=all, -config.file=/conf/tempo.yaml]
+          readinessProbe:
+            httpGet: { path: /ready, port: 3200 }
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 1Gi }
+          volumeMounts:
+            - { name: conf, mountPath: /conf }
+            - { name: data, mountPath: /var/tempo }
+      volumes:
+        - { name: conf, configMap: { name: tempo } }
+        - { name: data, emptyDir: {} }  # ponytail: 2 days of traces, lost when the pod moves; use a PVC to keep them
 ---
 apiVersion: v1
 kind: Service

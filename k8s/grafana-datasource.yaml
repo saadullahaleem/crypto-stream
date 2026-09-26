@@ -12,7 +12,7 @@ datasources:
     uid: prometheus
     url: http://prometheus:9090
     jsonData: { timeInterval: 15s }
-  - name: Jaeger
-    type: jaeger
-    uid: jaeger
-    url: http://jaeger:16686
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://tempo:3200

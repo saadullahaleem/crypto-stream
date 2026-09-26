@@ -566,7 +566,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(otelcol_exporter_sent_spans_total[1m]))",
-          "legendFormat": "spans/s sent to Jaeger"
+          "legendFormat": "spans/s sent to Tempo"
         },
         {
           "refId": "B",
@@ -685,8 +685,8 @@
       "type": "table",
       "title": "Recent traces: $trace_service",
       "datasource": {
-        "type": "jaeger",
-        "uid": "jaeger"
+        "type": "tempo",
+        "uid": "tempo"
       },
       "gridPos": {
         "x": 0,
@@ -699,11 +699,12 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "jaeger",
-            "uid": "jaeger"
+            "type": "tempo",
+            "uid": "tempo"
           },
-          "queryType": "search",
-          "service": "$trace_service",
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"$trace_service\"}",
+          "tableType": "traces",
           "limit": 20
         }
       ]
