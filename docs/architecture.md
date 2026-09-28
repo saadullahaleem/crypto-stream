@@ -402,6 +402,8 @@ Settings that were necessary:
 - RisingWave: `RW_SINGLE_NODE_PROMETHEUS_LISTENER_ADDR=0.0.0.0:1250`. The default listens on 127.0.0.1 only.
 - Workers: `service.instance.id` = pod name, so the metrics of 2 replicas do not overwrite each other.
 - Tempo has no UI of its own. Open traces in Grafana: Explore, data source Tempo, or the "Recent traces" table on Pipeline Health.
+- Tempo's metrics generator writes the service graph (`traces_service_graph_*`) and span metrics (`traces_spanmetrics_*`) to Prometheus with remote write. Grafana: Explore, Tempo, query type Service Graph.
+- Connect marks all its spans INTERNAL. A collector rule (`transform/connect-producer`) marks its `mutation` span as PRODUCER, so the service graph gets the edges ingest -> worker.
 
 ### 13.3 Dashboards
 

@@ -7,6 +7,13 @@ distributor:
     otlp:
       protocols:
         grpc: { endpoint: "0.0.0.0:4317" }
+# The service graph (which service calls which) and span metrics (rate, errors, duration), computed from the
+# traces and written to Prometheus. Grafana's service graph and "Service structure" views read them.
+metrics_generator:
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
 storage:
   trace:
     backend: local
@@ -16,5 +23,7 @@ overrides:
   defaults:
     compaction:
       block_retention: 48h  # the same as Prometheus
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 usage_report:
   reporting_enabled: false

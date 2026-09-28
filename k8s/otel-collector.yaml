@@ -73,6 +73,17 @@ processors:
           # A pod has several volumes: without the volume name, their series would overwrite each other.
           - set(attributes["k8s.volume.name"], resource.attributes["k8s.volume.name"]) where resource.attributes["k8s.volume.name"] != nil
 
+  # Connect marks all its spans INTERNAL. Tempo's service graph needs a PRODUCER span with a CONSUMER child to
+  # draw the edge ingest -> worker. The worker's span continues from Connect's mutation span (it takes the
+  # traceparent there), so that span becomes the PRODUCER.
+  # ponytail: a fix for Connect only; the Rust ingest will make its own PRODUCER span.
+  transform/connect-producer:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(span.kind, SPAN_KIND_PRODUCER) where span.name == "mutation" and IsMatch(resource.attributes["service.name"], ".*-ingest$")
+
 exporters:
   otlp/tempo:
     endpoint: tempo:4317
@@ -89,7 +100,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/connect-producer, batch]
       exporters: [otlp/tempo]
     metrics:
       receivers: [otlp, prometheus, kubeletstats, k8s_cluster]

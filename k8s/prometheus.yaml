@@ -1,4 +1,5 @@
 # Prometheus scrapes nothing itself: the collector pushes all metrics to its OTLP receiver.
+# Tempo's metrics generator pushes the service graph and span metrics with remote write.
 otlp:
   # Resource attributes that become labels. job and instance come from service.name and service.instance.id.
   promote_resource_attributes:
